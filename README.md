@@ -44,7 +44,7 @@ nightgan eval runs/mine data/mine --metrics fid,kid
 ```
 
 Training writes to the run folder: `samples/` (a grid of fixed seeds every 100k images), `log.jsonl` (losses,
-speed, FID), `checkpoints/` (full training state, every 30 minutes and at the end), `model.safetensors` (the
+speed, FID), `checkpoints/` (full training state, every 15 minutes and at the end), `model.safetensors` (the
 generator, latest) and `model-best.safetensors` (best FID so far).
 
 Class-conditional: put each class in its own subfolder and prepare with `--labels dirs`, then
@@ -79,7 +79,7 @@ The resolution does not change the speed much: 128, 256 and 512 px all use 16 x 
 | `--aug-policy`, `--aug-p` | `color,translation,cutout`, 1 | differentiable augmentation of the latents |
 | `--ema-halflife-kimg` | 350 | half-life of the generator's moving average, in thousands of images |
 | `--eval-every-kimg`, `--eval-num` | 500, 10000 | FID / KID during training (0 disables) |
-| `--sample-every-kimg`, `--snapshot-minutes` | 100, 30 | sample grids and snapshots |
+| `--sample-every-kimg`, `--snapshot-minutes` | 100, 15 | sample grids and snapshots |
 | `--no-compile`, `--checkpointing` | | eager mode (Windows without triton) / gradient checkpointing (less memory) |
 | `--force-config` | | start over in a run folder with a different model (old snapshots are moved aside) |
 
@@ -113,6 +113,9 @@ frames = pipe.interpolate([1, 7, 42], frames=30)
 - **Windows without triton:** use `--no-compile` (~20 % slower).
 - **"non-finite loss … step skipped":** a single skipped step is harmless; three in a row stop the run with a pointer
   to the last snapshot. Lower `--lr-g` / `--lr-d` or raise `--gamma`, then run the same command to resume.
+- **"GPU error … restarting from the last snapshot":** the GPU driver reset the card (on Windows / WSL2 e.g. after
+  a timeout, or because another program crashed it). Training restarts itself from the last snapshot, up to 5 times
+  in a row.
 - **Offline:** once the weights are downloaded nothing else is needed. The datasets and the run folders can be moved.
 
 ## Tests

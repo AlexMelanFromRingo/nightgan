@@ -133,3 +133,31 @@ def test_a_resumed_run_keeps_its_length_unless_a_new_one_is_given():
     assert train_length(Namespace(kimg=None, time=None), saved) == (500.0, None)
     assert train_length(Namespace(kimg=None, time='2h'), saved) == (None, 7200.0)
     assert train_length(Namespace(kimg=None, time=None), None) == (None, None)
+
+
+def test_fatal_gpu_errors_are_recognized():
+    from nightgan.cli import is_fatal_gpu_error
+    assert is_fatal_gpu_error(RuntimeError('CUDA driver error: unknown error'))
+    assert is_fatal_gpu_error(RuntimeError('CUDA error: an illegal memory access was encountered'))
+    assert not is_fatal_gpu_error(RuntimeError('CUDA out of memory. Tried to allocate 2.00 GiB'))
+    assert not is_fatal_gpu_error(ValueError('CUDA driver error'))
+    assert not is_fatal_gpu_error(RuntimeError('size mismatch'))
+
+
+def test_training_restarts_itself_after_a_gpu_reset(trained, monkeypatch, capsys):
+    import os
+    import sys
+    import nightgan.trainer as t
+    monkeypatch.setattr(t.Trainer, 'run', lambda self, max_steps=None: (_ for _ in ()).throw(
+        RuntimeError('CUDA driver error: unknown error')))
+    calls = []
+    monkeypatch.setattr(os, 'execve', lambda exe, args, env: calls.append((exe, args, env)))
+    monkeypatch.setattr('time.sleep', lambda s: None)
+    monkeypatch.delenv('NIGHTGAN_RESTARTS', raising=False)
+    argv = ['train', str(trained / 'data'), str(trained / 'run')] + TINY
+    main(argv)
+    exe, args, env = calls[0]
+    assert exe == sys.executable and args[1:] == ['-m', 'nightgan.cli'] + argv
+    assert env['NIGHTGAN_RESTARTS'] == '1' and 'restarting' in capsys.readouterr().err
+    monkeypatch.setenv('NIGHTGAN_RESTARTS', '5')   # the limit: no endless loop on a broken GPU
+    assert main(argv) == 2 and len(calls) == 1

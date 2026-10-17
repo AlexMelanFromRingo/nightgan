@@ -67,7 +67,7 @@ class TrainConfig:
     eval_every_kimg: float = 500.0
     eval_num: int = 10000
     sample_every_kimg: float = 100.0
-    snapshot_minutes: float = 30.0
+    snapshot_minutes: float = 15.0
     keep_snapshots: int = 3
     compile: bool = True
     checkpointing: bool = False         # gradient checkpointing of the generator blocks

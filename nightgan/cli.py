@@ -2,8 +2,10 @@
 
 import argparse
 import json
+import os
 import re
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -11,6 +13,8 @@ import torch
 
 from . import __version__
 
+MAX_RESTARTS = 5             # automatic restarts of `train` after consecutive GPU failures
+RESTART_RESET_SECONDS = 600  # a session that trained this long resets the count
 DURATION_UNITS = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
 REPA_DIMS = {'dinov2_vits14': 384, 'dinov2_vitb14': 768, 'dinov2_vitl14': 1024, 'dinov2_vitg14': 1536,
              'dinov2_vits14_reg': 384, 'dinov2_vitb14_reg': 768, 'dinov2_vitl14_reg': 1024, 'dinov2_vitg14_reg': 1536,
@@ -23,6 +27,17 @@ def parse_duration(text: str) -> float:
     if not m:
         raise ValueError(f'cannot read the duration {text!r}, use e.g. 10h, 90m, 2d or seconds')
     return float(m.group(1)) * DURATION_UNITS[m.group(2) or 's']
+
+
+def is_fatal_gpu_error(e: BaseException) -> bool:
+    """A CUDA error that leaves the process' GPU context unusable (e.g. the Windows driver reset the GPU after a
+    timeout, or another program crashed it). Out-of-memory errors are not: restarting would not help."""
+    if not isinstance(e, RuntimeError) or 'out of memory' in str(e):
+        return False
+    accelerator_error = getattr(torch, 'AcceleratorError', None)
+    msg = str(e)
+    return ('CUDA error' in msg or 'CUDA driver error' in msg or 'CUDA_ERROR' in msg or
+            (accelerator_error is not None and isinstance(e, accelerator_error)))
 
 
 def parse_seeds(text: str) -> list[int]:
@@ -234,7 +249,7 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument('--eval-every-kimg', type=float, default=500.0, help='FID / KID interval, 0 disables')
     t.add_argument('--eval-num', type=int, default=10000, help='images per evaluation (default 10000)')
     t.add_argument('--sample-every-kimg', type=float, default=100.0, help='sample grid interval')
-    t.add_argument('--snapshot-minutes', type=float, default=30.0, help='snapshot interval in minutes')
+    t.add_argument('--snapshot-minutes', type=float, default=15.0, help='snapshot interval in minutes')
     t.add_argument('--no-compile', action='store_true', help='do not use torch.compile')
     t.add_argument('--checkpointing', action='store_true', help='gradient checkpointing (less memory, slower)')
     t.add_argument('--seed', type=int, default=0)
@@ -286,14 +301,32 @@ def main(argv=None) -> int:
     from .metrics import MetricError
     from .trainer import ConfigMismatch, TrainingDiverged
     parser = build_parser()
+    argv = list(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(argv)
     if not getattr(args, 'func', None):
         parser.print_help()
         return 1
+    started = time.time()
     try:
         args.func(args)
-    except (DatasetError, MetricError, ConfigMismatch, TrainingDiverged, ValueError, FileNotFoundError,
-            RuntimeError) as e:
+    except RuntimeError as e:
+        if args.command != 'train' or not is_fatal_gpu_error(e):
+            print(f'error: {e}', file=sys.stderr)
+            return 2
+        restarts = int(os.environ.get('NIGHTGAN_RESTARTS', '0'))
+        if time.time() - started > RESTART_RESET_SECONDS:
+            restarts = 0
+        if restarts >= MAX_RESTARTS:
+            print(f'error: {e}\n{restarts} restarts in a row failed, giving up; run the same command to resume',
+                  file=sys.stderr)
+            return 2
+        print(f'GPU error: {e}\nrestarting from the last snapshot in 10 s ({restarts + 1}/{MAX_RESTARTS})',
+              file=sys.stderr, flush=True)
+        time.sleep(10)
+        env = dict(os.environ, NIGHTGAN_RESTARTS=str(restarts + 1))
+        os.execve(sys.executable, [sys.executable, '-m', 'nightgan.cli'] + argv, env)
+        return 2  # only reached if exec is not possible
+    except (DatasetError, MetricError, ConfigMismatch, TrainingDiverged, ValueError, FileNotFoundError) as e:
         print(f'error: {e}', file=sys.stderr)
         return 2
     return 0
