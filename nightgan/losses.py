@@ -16,8 +16,11 @@ def rpgan_g(real: torch.Tensor, fake: torch.Tensor) -> torch.Tensor:
 
 
 def finite_diff_penalty(clean: torch.Tensor, noisy: torch.Tensor, sigma: float) -> torch.Tensor:
-    """`((D(x + e) - D(x)) / sigma)^2` with `e ~ N(0, sigma^2 I)`, averaged over the scales: an unbiased estimate of
-    `|grad D(x)|^2` (R1 for real inputs, R2 for fakes) that needs no double backward (GAT). Returns `[B]`."""
+    """`((D(x + e) - D(x)) / sigma)^2` with `e ~ N(0, sigma^2 I)`, averaged over the scales: an estimate of
+    `|grad D(x)|^2` (R1 for real inputs, R2 for fakes) that needs no double backward (GAT). Its expectation equals
+    `|grad D(x)|^2` up to terms of order `sigma^2` (curvature of D); in bfloat16 the rounding of the two forward passes
+    adds an upward bias that grows as `sigma` shrinks (+26 % at 0.01, x4 at 0.003, none measurable at 0.03).
+    Returns `[B]`."""
     return ((noisy.float() - clean.float()) / sigma).square().mean(dim=1)
 
 
