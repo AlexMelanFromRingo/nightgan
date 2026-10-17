@@ -50,6 +50,7 @@ class TrainConfig:
     micro_batch: int = 0                # images per forward pass on the GPU, 0: largest that fits
     lr_g: float | None = None           # None: 2e-4 * 768 / width
     lr_d: float | None = None
+    optimizer: str = 'adamw'            # 'adamw' or 'adabelief' (needs beta1 > 0)
     betas: tuple[float, float] = (0.0, 0.99)
     grad_clip: float = 1.0
     gamma: float = 0.1                  # R1 and R2 weight, the loss is gamma / 2 * (R1 + R2)

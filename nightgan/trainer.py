@@ -24,6 +24,7 @@ from .encoders import load_encoder
 from .generator import Generator
 from .losses import finite_diff_penalty, repa_loss, resize_tokens, rpgan_d, rpgan_g, stage_consistency
 from .metrics import default_extractors, evaluate
+from .optim import make_optimizer
 from .pipeline import save_model
 
 TICK_SECONDS = 60.0
@@ -102,9 +103,8 @@ class Trainer:
         self.ema = EMA(self.G)
         lr_g, lr_d = cfg.resolved_lr(mc)
         self.base_lr = (lr_g, lr_d)
-        opt = dict(betas=tuple(float(b) for b in cfg.betas), eps=1e-8, weight_decay=0.0, fused=self.cuda)
-        self.opt_g = torch.optim.AdamW(self.G.parameters(), lr=lr_g, **opt)
-        self.opt_d = torch.optim.AdamW(self.D.parameters(), lr=lr_d, **opt)
+        self.opt_g = make_optimizer(cfg.optimizer, self.G.parameters(), lr_g, cfg.betas, fused=self.cuda)
+        self.opt_d = make_optimizer(cfg.optimizer, self.D.parameters(), lr_d, cfg.betas, fused=self.cuda)
 
         self.cur_nimg, self.step, self.train_seconds = 0, 0, 0.0
         self.best_fid, self.last_metrics, self.skipped_steps, self.bad_streak = math.inf, {}, 0, 0

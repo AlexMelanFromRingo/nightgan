@@ -171,3 +171,14 @@ def test_eval_of_a_folder_skips_unreadable_images(trained, tmp_path, capsys):
                  '--device', 'cpu']) == 0
     out = capsys.readouterr().out
     assert 'num: 4' in out and 'skipped 1' in out
+
+
+def test_optimizer_flags():
+    from nightgan.cli import build_parser, optimizer_betas
+    p = build_parser()
+    assert optimizer_betas(p.parse_args(['train', 'd', 'r'])) == ('adamw', (0.0, 0.99))
+    assert optimizer_betas(p.parse_args(['train', 'd', 'r', '--optimizer', 'adabelief'])) == ('adabelief', (0.5, 0.99))
+    assert optimizer_betas(p.parse_args(['train', 'd', 'r', '--optimizer', 'adabelief', '--beta1', '0.9'])) == \
+        ('adabelief', (0.9, 0.99))
+    with pytest.raises(ValueError, match='beta1'):
+        optimizer_betas(p.parse_args(['train', 'd', 'r', '--optimizer', 'adabelief', '--beta1', '0']))

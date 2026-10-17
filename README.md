@@ -121,6 +121,7 @@ lightweight-gan: [docs/results.md](docs/results.md).
 | `--batch` | 256 | images per optimizer step |
 | `--micro-batch` | 0 (auto) | images per forward pass: the largest that fits ~85 % of the free GPU memory, the rest is gradient accumulation |
 | `--lr-g`, `--lr-d` | `2e-4 · 768 / width` | learning rates (width-aware, from GAT) |
+| `--optimizer`, `--beta1`, `--beta2` | `adamw`, 0, 0.99 | AdamW as in the GAT / R3GAN recipes, or `adabelief` (needs momentum: beta1 0.5 by default) |
 | `--gamma` | 0.1 | weight of the R1 + R2 penalties |
 | `--gp-sigma` | 0.03 | noise of the finite-difference penalty (bf16-safe) |
 | `--cons-weight` | 0.1 | stage consistency |

@@ -191,3 +191,12 @@ def test_micro_batch_candidates_divide_any_batch():
     assert micro_batch_candidates(256) == [1, 2, 4, 8, 16, 32, 64, 128]
     assert micro_batch_candidates(100) == [1, 2, 4, 5, 10, 20, 25, 50, 100]
     assert micro_batch_candidates(96)[-3:] == [32, 48, 96]
+
+
+def test_training_with_adabelief(dataset, tmp_path):
+    from nightgan.optim import AdaBelief
+    t = make(dataset, tmp_path / 'run', tcfg=train_cfg(optimizer='adabelief', betas=(0.5, 0.99)))
+    assert isinstance(t.opt_g, AdaBelief) and isinstance(t.opt_d, AdaBelief)
+    t.run(max_steps=2)
+    resumed = make(dataset, tmp_path / 'run', tcfg=train_cfg(optimizer='adabelief', betas=(0.5, 0.99)))
+    assert resumed.step == 2 and resumed.opt_g.state

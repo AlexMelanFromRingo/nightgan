@@ -81,6 +81,14 @@ def train_length(args, saved: dict | None):
     return None, None
 
 
+def optimizer_betas(args):
+    """`(optimizer, betas)`: AdamW defaults to (0, 0.99) as in the GAN recipes, AdaBelief to (0.5, 0.99)."""
+    beta1 = args.beta1 if args.beta1 is not None else (0.5 if args.optimizer == 'adabelief' else 0.0)
+    if args.optimizer == 'adabelief' and not beta1 > 0:
+        raise ValueError('AdaBelief needs --beta1 > 0: without momentum its second moment (g - m)^2 is zero')
+    return args.optimizer, (beta1, args.beta2)
+
+
 MODEL_FLAGS = ('dim', 'depth', 'heads', 'd_dim', 'd_depth', 'd_heads', 'z_dim', 'patch', 'cmap_dim')
 
 
@@ -102,7 +110,8 @@ def cmd_train(args):
     elif overrides:  # on resume, model flags apply on top of the saved configuration
         model_cfg = replace(from_dict(ModelConfig, saved['model']), **overrides)
     kimg, time_limit = train_length(args, saved)
-    train_cfg = TrainConfig(
+    optimizer, betas = optimizer_betas(args)
+    train_cfg = TrainConfig(optimizer=optimizer, betas=betas,
         batch=args.batch, micro_batch=args.micro_batch, lr_g=args.lr_g, lr_d=args.lr_d, gamma=args.gamma,
         gp_sigma=args.gp_sigma, cons_weight=args.cons_weight, repa_weight=args.repa_weight,
         repa_encoder=args.repa_encoder if args.repa_weight > 0 else 'none', aug_policy=args.aug_policy,
@@ -248,6 +257,10 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument('--micro-batch', type=int, default=0, help='images per forward pass, 0: the largest that fits')
     t.add_argument('--lr-g', type=float, help='generator learning rate (default 2e-4 * 768 / width)')
     t.add_argument('--lr-d', type=float, help='discriminator learning rate (default 2e-4 * 768 / width)')
+    t.add_argument('--optimizer', choices=['adamw', 'adabelief'], default='adamw',
+                   help='adamw (default, beta1 0) or adabelief (beta1 0.5)')
+    t.add_argument('--beta1', type=float, help='first moment decay (default 0 for adamw, 0.5 for adabelief)')
+    t.add_argument('--beta2', type=float, default=0.99, help='second moment decay (default 0.99)')
     t.add_argument('--gamma', type=float, default=0.1, help='R1 + R2 weight (default 0.1)')
     t.add_argument('--gp-sigma', type=float, default=0.03, help='noise of the approximated gradient penalty')
     t.add_argument('--cons-weight', type=float, default=0.1, help='stage consistency weight (default 0.1)')
