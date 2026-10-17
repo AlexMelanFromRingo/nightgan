@@ -205,3 +205,17 @@ def test_repa_images_can_be_left_out(tmp_path, image_folder):
     assert TrainSet(tmp_path / 'data', 'cpu', repa=False).next(4).images224 is None
     with pytest.raises(DatasetError, match='REPA'):
         TrainSet(tmp_path / 'data', 'cpu', repa=True)
+
+
+def test_kid_reference_features_are_a_random_subset_of_all_classes(tmp_path, monkeypatch):
+    import nightgan.data as data_module
+    monkeypatch.setattr(data_module, 'MAX_STORED_FEATURES', 20)
+    for name, color in [('a', (255, 0, 0)), ('b', (0, 255, 0)), ('c', (0, 0, 255))]:
+        (tmp_path / 'src' / name).mkdir(parents=True)
+        for i in range(15):
+            Image.new('RGB', (32, 32), color).save(tmp_path / 'src' / name / f'{i}.png')
+    prepare_fast(tmp_path / 'src', tmp_path / 'data', labels='dirs')
+    feats = np.load(tmp_path / 'data' / 'stats' / 'inception.npz')['features']
+    assert feats.shape == (20, 3)
+    counts = np.bincount(feats.argmax(1), minlength=3)
+    assert (counts >= 3).all(), counts

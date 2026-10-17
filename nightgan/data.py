@@ -92,25 +92,36 @@ def _load(item, res):
 # Preparation
 
 class _FeatureStats:
-    def __init__(self):
-        self.n, self.sum, self.outer, self.kept = 0, None, None, []
+    """Running mean and covariance of features, plus a uniform random sample of at most `MAX_STORED_FEATURES` rows
+    for KID (reservoir sampling: the folder order, e.g. sorted classes, does not bias the sample)."""
+
+    def __init__(self, seed: int = 0):
+        self.n, self.sum, self.outer, self.kept = 0, None, None, None
+        self.rng = np.random.default_rng(seed)
 
     def add(self, feats: torch.Tensor):
         f = feats.detach().double().cpu()
         if self.sum is None:
             self.sum = torch.zeros(f.shape[1], dtype=torch.float64)
             self.outer = torch.zeros(f.shape[1], f.shape[1], dtype=torch.float64)
-        self.n += f.shape[0]
+            self.kept = np.zeros((MAX_STORED_FEATURES, f.shape[1]), dtype=np.float32)
         self.sum += f.sum(0)
         self.outer += f.T @ f
-        kept = sum(k.shape[0] for k in self.kept)
-        if kept < MAX_STORED_FEATURES:
-            self.kept.append(f[:MAX_STORED_FEATURES - kept].float())
+        rows = f.float().numpy()
+        for row in rows:
+            if self.n < MAX_STORED_FEATURES:
+                self.kept[self.n] = row
+            else:
+                j = self.rng.integers(0, self.n + 1)
+                if j < MAX_STORED_FEATURES:
+                    self.kept[j] = row
+            self.n += 1
 
     def save(self, path):
         mu = self.sum / self.n
         sigma = (self.outer - self.n * torch.outer(mu, mu)) / max(self.n - 1, 1)
-        np.savez(path, mu=mu.numpy(), sigma=sigma.numpy(), features=torch.cat(self.kept).numpy(), count=self.n)
+        np.savez(path, mu=mu.numpy(), sigma=sigma.numpy(), features=self.kept[:min(self.n, MAX_STORED_FEATURES)],
+                 count=self.n)
 
 
 def _resize_uint8(x: torch.Tensor, size: int) -> torch.Tensor:
