@@ -184,3 +184,10 @@ def test_resuming_on_a_smaller_dataset_restarts_its_epoch(tmp_path, dataset):
             workers=1, extractors={'inception': mean_color}, progress=False)
     resumed = make(tmp_path / 'small_data', tmp_path / 'run')
     assert resumed.data.next(8).latents.shape[0] == 8
+
+
+def test_micro_batch_candidates_divide_any_batch():
+    from nightgan.trainer import micro_batch_candidates
+    assert micro_batch_candidates(256) == [1, 2, 4, 8, 16, 32, 64, 128]
+    assert micro_batch_candidates(100) == [1, 2, 4, 5, 10, 20, 25, 50, 100]
+    assert micro_batch_candidates(96)[-3:] == [32, 48, 96]

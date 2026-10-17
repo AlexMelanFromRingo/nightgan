@@ -161,3 +161,13 @@ def test_training_restarts_itself_after_a_gpu_reset(trained, monkeypatch, capsys
     assert env['NIGHTGAN_RESTARTS'] == '1' and 'restarting' in capsys.readouterr().err
     monkeypatch.setenv('NIGHTGAN_RESTARTS', '5')   # the limit: no endless loop on a broken GPU
     assert main(argv) == 2 and len(calls) == 1
+
+
+def test_eval_of_a_folder_skips_unreadable_images(trained, tmp_path, capsys):
+    main(['generate', str(trained / 'run'), str(tmp_path / 'imgs'), '--seeds', '0-3', '--device', 'cpu'])
+    (tmp_path / 'imgs' / 'broken.png').write_bytes(b'not a png')
+    capsys.readouterr()
+    assert main(['eval', str(trained / 'data'), '--images', str(tmp_path / 'imgs'), '--metrics', 'fid',
+                 '--device', 'cpu']) == 0
+    out = capsys.readouterr().out
+    assert 'num: 4' in out and 'skipped 1' in out

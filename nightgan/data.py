@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -41,12 +42,15 @@ def scan_images(src, labels: str = 'none'):
         raise ValueError(f"labels has to be 'none' or 'dirs', not {labels!r}")
     items, skipped = [], []
     for path in sorted(p for p in src.rglob('*') if p.is_file()):
+        parts = path.relative_to(src).parts
+        if any(part.startswith('.') or part == '__MACOSX' for part in parts):
+            skipped.append((path, 'hidden file or macOS metadata'))
+            continue
         if path.suffix.lower() not in IMAGE_EXTS:
             skipped.append((path, 'not an image'))
             continue
         cls = None
         if labels == 'dirs':
-            parts = path.relative_to(src).parts
             if len(parts) < 2:
                 raise DatasetError(f'with class labels from folders every image has to be inside a class folder, '
                                    f'{path} is not')
@@ -159,8 +163,6 @@ def prepare(src, dst, resolution: int = 256, labels: str = 'none', autoencoder: 
         items = items[:max_images]
     if not items:
         raise DatasetError(f'no images found in {src}')
-    classes = sorted({c for _, c in items}) if labels == 'dirs' else None
-    class_index = {c: i for i, c in enumerate(classes or [])}
 
     device = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
     ae = ae or load_autoencoder(autoencoder, device)
@@ -172,9 +174,16 @@ def prepare(src, dst, resolution: int = 256, labels: str = 'none', autoencoder: 
         extractors = default_extractors(device)
     extractors = extractors if stats else {}
 
+    capacity, orientations = len(items), 2 if flip else 1
+    per_image = orientations * 2 * channels * latent_res ** 2 * 2 + (REPA_SIZE ** 2 * 3 if repa_images else 0)
+    needed = int(capacity * per_image * 1.05) + 300 * 2 ** 20
+    existing = next(p for p in [dst, *dst.parents] if p.exists())
+    free = shutil.disk_usage(existing).free
+    if free < needed:
+        raise DatasetError(f'not enough disk space for {capacity} images: {needed / 2 ** 30:.1f} GB needed, '
+                           f'{free / 2 ** 30:.1f} GB free on {existing}')
     dst.mkdir(parents=True, exist_ok=True)
     (dst / 'stats').mkdir(exist_ok=True)
-    capacity, orientations = len(items), 2 if flip else 1
     latents = np.lib.format.open_memmap(dst / 'latents.npy', mode='w+', dtype=np.float16,
                                         shape=(capacity, orientations, 2 * channels, latent_res, latent_res))
     images = None
@@ -220,7 +229,7 @@ def prepare(src, dst, resolution: int = 256, labels: str = 'none', autoencoder: 
                 images[n:n + b] = _resize_uint8(x, REPA_SIZE).permute(0, 2, 3, 1).cpu().numpy()
             for name, fn in extractors.items():
                 feature_stats[name].add(fn(x))
-            label_list += [class_index.get(c, 0) for _, c in good]
+            label_list += [c for _, c in good]
             n += b
     bar.close()
     if n == 0:
@@ -233,8 +242,10 @@ def prepare(src, dst, resolution: int = 256, labels: str = 'none', autoencoder: 
         del images
     for name, acc in feature_stats.items():
         acc.save(dst / 'stats' / f'{name}.npz')
+    classes = sorted(set(label_list)) if labels == 'dirs' else None  # only classes with readable images
     if classes:
-        np.save(dst / 'labels.npy', np.asarray(label_list, dtype=np.int64))
+        class_index = {c: i for i, c in enumerate(classes)}
+        np.save(dst / 'labels.npy', np.asarray([class_index[c] for c in label_list], dtype=np.int64))
     lat_mean = lat_sum / lat_count
     lat_std = (lat_sq / lat_count - lat_mean.square() + lat_var / lat_count).clamp_min(1e-12).sqrt()
     skipped = sorted(skipped + failed, key=lambda s: str(s[0]))

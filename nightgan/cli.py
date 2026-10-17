@@ -174,10 +174,18 @@ def cmd_eval(args):
         if args.num:
             items = items[:args.num]
 
+        unreadable = []
+
         def batches():
             for i in range(0, len(items), args.batch):
-                arr = [load_square(p, res) for p, _ in items[i:i + args.batch]]
-                yield torch.from_numpy(np.stack(arr)).permute(0, 3, 1, 2)
+                arr = []
+                for p, _ in items[i:i + args.batch]:
+                    try:
+                        arr.append(load_square(p, res))
+                    except Exception:
+                        unreadable.append(p)
+                if arr:
+                    yield torch.from_numpy(np.stack(arr)).permute(0, 3, 1, 2)
     else:
         if len(args.targets) != 2:
             raise ValueError('give the model and the dataset folder (or --images DIR and the dataset folder)')
@@ -200,6 +208,8 @@ def cmd_eval(args):
     result = evaluate(batches(), data, metrics=metrics, device=args.device)
     for k, v in result.items():
         print(f'{k}: {v:.6g}' if isinstance(v, float) else f'{k}: {v}')
+    if args.images and unreadable:
+        print(f'skipped {len(unreadable)} unreadable files, e.g. {unreadable[0]}')
 
 
 # --------------------------------------------------------------------------------------------------------------------

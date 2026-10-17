@@ -34,6 +34,11 @@ EVAL_BATCH = 32
 STAT_KEYS = ('loss_d', 'r1', 'r2', 'repa', 'loss_g', 'cons', 'grad_d', 'grad_g')
 
 
+def micro_batch_candidates(batch: int, largest: int = 128) -> list[int]:
+    """Micro-batch sizes that divide the global batch (accumulation in equal parts)."""
+    return [m for m in range(1, min(batch, largest) + 1) if batch % m == 0]
+
+
 class ConfigMismatch(Exception):
     pass
 
@@ -537,11 +542,11 @@ class Trainer:
         budget = MEMORY_BUDGET * (free + torch.cuda.memory_reserved(self.device))
         n_params = sum(p.numel() for p in self.G.parameters()) + sum(p.numel() for p in self.D.parameters())
         optimizer_state = 0 if self.opt_g.state else 8 * n_params  # Adam moments are created at the first step
-        candidates = [m for m in (1, 2, 4, 8, 16, 32, 64, 128) if m <= cfg.batch and cfg.batch % m == 0]
+        candidates = micro_batch_candidates(cfg.batch)
         rng = torch.get_rng_state(), torch.cuda.get_rng_state_all()
-        small = candidates[min(2, len(candidates) - 1)]
+        small = max(m for m in candidates if m <= 8)  # two trials far enough apart to extrapolate the memory
         peaks = {small: self._trial(small) + optimizer_state}
-        big = next((m for m in candidates if m > small), None)
+        big = next((m for m in candidates if m >= 2 * small), None)
         if big is not None:
             peaks[big] = self._trial(big) + optimizer_state
         if big is not None and math.isfinite(peaks[big]):

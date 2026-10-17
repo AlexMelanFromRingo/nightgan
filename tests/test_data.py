@@ -242,3 +242,30 @@ def test_prefetching_gives_the_same_batches_and_state(small_set):
     assert torch.equal(a.next(16).indices, b.next(16).indices)
     assert torch.equal(a.next(8).indices, b.next(8).indices)   # another batch size drops the batch read ahead
     a.close()
+
+
+def test_hidden_files_and_macos_metadata_are_not_classes(tmp_path):
+    write_images(tmp_path / 'src' / 'cats', 3, seed=1)
+    write_images(tmp_path / 'src' / 'dogs', 3, seed=2)
+    (tmp_path / 'src' / '__MACOSX' / 'cats').mkdir(parents=True)
+    (tmp_path / 'src' / '__MACOSX' / 'cats' / '._0000.png').write_bytes(b'\x00\x05\x16\x07 AppleDouble')
+    (tmp_path / 'src' / 'cats' / '.DS_Store').write_bytes(b'\x00')
+    summary = prepare_fast(tmp_path / 'src', tmp_path / 'data', labels='dirs')
+    assert summary['classes'] == ['cats', 'dogs'] and summary['count'] == 6
+
+
+def test_a_class_whose_images_all_fail_is_dropped(tmp_path):
+    write_images(tmp_path / 'src' / 'good', 3, seed=1)
+    (tmp_path / 'src' / 'broken').mkdir()
+    (tmp_path / 'src' / 'broken' / 'x.png').write_bytes(b'not a png')
+    summary = prepare_fast(tmp_path / 'src', tmp_path / 'data', labels='dirs')
+    assert summary['classes'] == ['good']
+    assert np.load(tmp_path / 'data' / 'labels.npy').tolist() == [0, 0, 0]
+
+
+def test_not_enough_disk_space_is_reported_before_encoding(tmp_path, image_folder, monkeypatch):
+    import shutil
+    import nightgan.data as data_module
+    monkeypatch.setattr(data_module.shutil, 'disk_usage', lambda p: shutil._ntuple_diskusage(10 ** 9, 10 ** 9, 1000))
+    with pytest.raises(DatasetError, match='disk space'):
+        prepare_fast(image_folder, tmp_path / 'data')
