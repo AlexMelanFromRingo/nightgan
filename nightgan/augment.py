@@ -12,6 +12,7 @@ import torch.nn.functional as F
 OPS = ('color', 'translation', 'cutout')
 TRANSLATION_RATIO = 0.125
 CUTOUT_RATIO = 0.5
+COLOR_PROB = 0.5   # GAT's DiffAugment changes the colors of half of the samples
 
 
 @dataclass
@@ -41,10 +42,10 @@ def sample_aug(batch: int, side: int, policy: str, p: float, device, generator=N
     def rand(*shape):
         return torch.rand(*shape, device=device, generator=generator)
 
-    def on(op):
-        return ((rand(batch) < p) & (op in ops)).float()
+    def on(op, prob=1.0):
+        return ((rand(batch) < p * prob) & (op in ops)).float()
 
-    color = on('color').view(batch, 1, 1, 1)
+    color = on('color', COLOR_PROB).view(batch, 1, 1, 1)
     brightness = (rand(batch, 1, 1, 1) - 0.5) * color
     saturation = 1 + (rand(batch, 1, 1, 1) * 2 - 1) * color
     contrast = 1 + (rand(batch, 1, 1, 1) - 0.5) * color

@@ -79,3 +79,9 @@ def test_shift_images_without_translation_is_the_identity():
 def test_unknown_policy_is_rejected():
     with pytest.raises(ValueError, match='rotate'):
         sample_aug(1, 16, 'translation,rotate', p=1.0, device='cpu')
+
+
+def test_color_is_applied_to_half_of_the_samples_as_in_gat():
+    params = sample_aug(4000, 16, 'color', p=1.0, device='cpu')
+    changed = (params.brightness.flatten() != 0).float().mean().item()
+    assert 0.45 < changed < 0.55
