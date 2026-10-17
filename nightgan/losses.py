@@ -22,8 +22,12 @@ def finite_diff_penalty(clean: torch.Tensor, noisy: torch.Tensor, sigma: float) 
 
 
 def stage_consistency(stages: list[torch.Tensor], weights=STAGE_WEIGHTS) -> torch.Tensor:
-    """Mean squared distance of the intermediate stage outputs to the (detached) final output (CAT)."""
-    target = stages[-1].detach().float()
+    """Mean squared distance of the intermediate stage outputs to the final output (CAT).
+
+    The final output is not detached. The stages are partial sums of the output heads, so this penalizes what the
+    later heads add on top of each stage. With a detached target the gradient moves the early heads, and with them the
+    target, by the same amount: the distance never shrinks and the outputs drift without bound."""
+    target = stages[-1].float()
     terms = [w * (s.float() - target).square().mean() for w, s in zip(weights, stages[:-1])]
     return sum(terms) / len(terms)
 

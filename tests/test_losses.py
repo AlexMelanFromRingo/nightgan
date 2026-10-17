@@ -52,17 +52,33 @@ def test_finite_difference_penalty_matches_r1_of_the_discriminator():
     assert pen.mean().item() == pytest.approx(r1.mean().item(), rel=0.15)
 
 
-def test_stage_consistency_pulls_earlier_stages_towards_the_last():
-    last = torch.randn(2, 4, 8, 8, requires_grad=True)
-    same = [last.detach().clone().requires_grad_(True) for _ in range(3)] + [last]
-    assert stage_consistency(same).item() == 0.0
-    stages = [torch.zeros(2, 4, 8, 8, requires_grad=True) for _ in range(3)] + [last]
-    loss = stage_consistency(stages)
-    expected = sum(w * last.detach().square().mean() for w in (1 / 3, 1 / 2, 1)) / 3
-    assert loss.item() == pytest.approx(expected.item())
-    loss.backward()
-    assert last.grad is None
-    assert all(s.grad.abs().sum() > 0 for s in stages[:3])
+def test_stage_consistency_is_zero_for_equal_stages():
+    last = torch.randn(2, 4, 8, 8)
+    assert stage_consistency([last.clone() for _ in range(4)]).item() == 0.0
+    stages = [torch.zeros(2, 4, 8, 8) for _ in range(3)] + [last]
+    expected = sum(w * last.square().mean() for w in (1 / 3, 1 / 2, 1)) / 3
+    assert stage_consistency(stages).item() == pytest.approx(expected.item())
+
+
+def test_stage_consistency_of_accumulated_outputs_converges_without_drift():
+    # the generator stages are partial sums of head outputs: h_k = o_1 + ... + o_k
+    torch.manual_seed(0)
+    heads = [torch.randn(1, 4, 8, 8, requires_grad=True) for _ in range(4)]
+    def stages():
+        out, acc = [], 0
+        for o in heads:
+            acc = acc + o
+            out.append(acc)
+        return out
+    start_loss = stage_consistency(stages()).item()
+    start_norm = stages()[-1].norm().item()
+    opt = torch.optim.SGD(heads, lr=100.0)  # the loss is a mean over 256 elements
+    for _ in range(300):
+        opt.zero_grad()
+        stage_consistency(stages()).backward()
+        opt.step()
+    assert stage_consistency(stages()).item() < 0.01 * start_loss
+    assert stages()[-1].norm().item() < 1.5 * start_norm
 
 
 def test_repa_loss_is_one_minus_cosine():
