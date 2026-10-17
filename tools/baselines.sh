@@ -2,7 +2,7 @@
 # Equal-time baselines on FFHQ-256 (docs/results.md). Each run gets the same wall-clock budget on the same GPU;
 # the last snapshot before the budget ends is evaluated with the same code as nightgan (`nightgan eval --images`).
 #
-#   tools/baselines.sh stylegan2|stylegan2-resume|r3gan|lightweight-gan|eval-all
+#   tools/baselines.sh stylegan2|stylegan2-resume|r3gan|r3gan-resume|lightweight-gan|lightweight-gan-resume|eval-all
 #
 # Paths (override with environment variables):
 #   FFHQ_IMAGES  folder of the 70k FFHQ 256x256 PNGs (tools/parquet_to_images.py)
@@ -45,6 +45,16 @@ r3gan)      # R3GAN's FFHQ-256 preset, batch 64 (the paper uses 256 on 8 GPUs) i
     timeout "$BUDGET" "$SG3_PY" train.py --outdir="$OUT/r3gan" --data="$FFHQ_ZIP" --gpus=1 --batch=64 \
         --g-batch-gpu=8 --d-batch-gpu=8 --mirror=1 --aug=1 --preset=FFHQ-256 --tick=1 --snap=10 --metrics=none \
         > "$OUT/r3gan.log" 2>&1 || true ;;
+r3gan-resume)  # continue an interrupted R3GAN run from its last snapshot (snapshots every 2 kimg, ~9 min)
+    pkl=$(ls -t "$OUT"/r3gan/*/network-snapshot-*.pkl | head -1)
+    cd "$R3GAN"
+    timeout "$BUDGET" "$SG3_PY" train.py --outdir="$OUT/r3gan" --data="$FFHQ_ZIP" --gpus=1 --batch=64 \
+        --g-batch-gpu=8 --d-batch-gpu=8 --mirror=1 --aug=1 --preset=FFHQ-256 --tick=1 --snap=2 --metrics=none \
+        --resume="$pkl" > "$OUT/r3gan-resume.log" 2>&1 || true ;;
+lightweight-gan-resume)  # lightweight-gan continues from its latest checkpoint by itself; save more often near the end
+    timeout "$BUDGET" "$LWGAN" --data "$FFHQ_IMAGES" --name ffhq256 --image-size 256 \
+        --models-dir "$OUT/lwgan/models" --results-dir "$OUT/lwgan/results" --amp --num-train-steps 10000000 \
+        --save-every 250 > "$OUT/lightweight-gan-resume.log" 2>&1 || true ;;
 lightweight-gan)  # lightweight-gan defaults (batch 10 x 4 accumulation), bf16
     timeout "$BUDGET" "$LWGAN" --data "$FFHQ_IMAGES" --name ffhq256 --image-size 256 \
         --models-dir "$OUT/lwgan/models" --results-dir "$OUT/lwgan/results" --amp --num-train-steps 10000000 \
@@ -63,5 +73,5 @@ eval-all)   # NUM images of the last snapshot of each, scored like nightgan
     done
     mkdir -p "$OUT/eval/lwgan" && find "$OUT"/eval/lwgan-* -name '*-ema.*' -exec mv {} "$OUT/eval/lwgan/" \;
     nightgan eval "$FFHQ_DATA" --images "$OUT/eval/lwgan" --metrics fid,kid,fd_dinov2 | tee "$OUT/eval/lwgan.txt" ;;
-*) echo "usage: $0 stylegan2|stylegan2-resume|r3gan|lightweight-gan|eval-all"; exit 1 ;;
+*) echo "usage: $0 stylegan2|stylegan2-resume|r3gan|r3gan-resume|lightweight-gan|lightweight-gan-resume|eval-all"; exit 1 ;;
 esac
