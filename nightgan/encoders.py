@@ -23,8 +23,9 @@ def _prepare(images: torch.Tensor) -> torch.Tensor:
 class DinoV2:
     """DINOv2 ViT/14 from torch.hub. `__call__(uint8 images [B, 3, H, W])` → ([cls] `[B, D]`, patches `[B, 256, D]`)."""
 
-    def __init__(self, name: str = 'dinov2_vitb14', device='cuda'):
+    def __init__(self, name: str = 'dinov2_vitb14', device='cuda', bf16: bool = True):
         self.device = torch.device(device)
+        self.bf16 = bf16 and self.device.type == 'cuda'
         with warnings.catch_warnings():  # the hub code reports that the optional xFormers is missing
             warnings.filterwarnings('ignore', message='xFormers is not available')
             self.model = torch.hub.load('facebookresearch/dinov2', name, skip_validation=True, trust_repo=True)
@@ -34,7 +35,7 @@ class DinoV2:
     @torch.inference_mode()
     def __call__(self, images: torch.Tensor):
         x = _prepare(images.to(self.device))
-        with torch.autocast(self.device.type, torch.bfloat16, enabled=self.device.type == 'cuda'):
+        with torch.autocast(self.device.type, torch.bfloat16, enabled=self.bf16):
             out = self.model.forward_features(x)
         return out['x_norm_clstoken'].float(), out['x_norm_patchtokens'].float()
 
