@@ -32,6 +32,18 @@ def stage_consistency(stages: list[torch.Tensor], weights=STAGE_WEIGHTS) -> torc
     return sum(terms) / len(terms)
 
 
+def resize_tokens(tokens: torch.Tensor, side: int) -> torch.Tensor:
+    """Bicubic resampling of a square token grid `[B, N, D]` to `[B, side * side, D]` (REPA targets for a
+    discriminator whose token grid is not the 16 x 16 grid of DINOv2)."""
+    b, n, d = tokens.shape
+    src = int(round(n ** 0.5))
+    if src == side:
+        return tokens
+    grid = tokens.transpose(1, 2).reshape(b, d, src, src).float()
+    grid = F.interpolate(grid, size=(side, side), mode='bicubic', align_corners=False)
+    return grid.reshape(b, d, side * side).transpose(1, 2)
+
+
 def repa_loss(pred_cls, pred_tokens, target_cls, target_tokens) -> torch.Tensor:
     """`(1 - cos)` of the [cls] token plus the mean `(1 - cos)` over the patch tokens (GAT's REPA objective)."""
     cls = 1 - F.cosine_similarity(pred_cls.float(), target_cls.float(), dim=-1)

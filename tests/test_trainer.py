@@ -112,6 +112,12 @@ def test_gradient_checkpointing_is_a_training_option(dataset, tmp_path):
     assert make(dataset, tmp_path / 'run').step == 1   # resuming without it is not a model change
 
 
+@pytest.mark.parametrize('patch', [1, 4])
+def test_repa_targets_follow_a_non_default_token_grid(dataset, tmp_path, patch):
+    t = make(dataset, tmp_path / 'run', mcfg=model_cfg(patch=patch))
+    assert t.run(max_steps=1)['steps'] == 1
+
+
 def test_model_config_must_match_the_dataset(dataset, tmp_path):
     with pytest.raises(ValueError, match='latent_channels'):
         make(dataset, tmp_path / 'run', mcfg=model_cfg(latent_channels=4))

@@ -86,3 +86,12 @@ def test_repa_loss_is_one_minus_cosine():
     assert repa_loss(cls, tok, cls, tok).item() == pytest.approx(0.0, abs=1e-6)
     assert repa_loss(cls, tok, -cls, -tok).item() == pytest.approx(4.0)
     assert repa_loss(cls, tok, 2 * cls, 3 * tok).item() == pytest.approx(0.0, abs=1e-6)
+
+
+def test_resize_tokens_keeps_a_constant_grid_and_changes_the_count():
+    from nightgan.losses import resize_tokens
+    t = torch.ones(2, 256, 8) * torch.arange(8.0)
+    assert resize_tokens(t, 16) is t
+    out = resize_tokens(t, 32)
+    assert out.shape == (2, 1024, 8)
+    torch.testing.assert_close(out, torch.ones(2, 1024, 8) * torch.arange(8.0))

@@ -22,7 +22,7 @@ from .discriminator import Discriminator, pyramid, real_pyramid
 from .ema import EMA, ema_decay
 from .encoders import load_encoder
 from .generator import Generator
-from .losses import finite_diff_penalty, repa_loss, rpgan_d, rpgan_g, stage_consistency
+from .losses import finite_diff_penalty, repa_loss, resize_tokens, rpgan_d, rpgan_g, stage_consistency
 from .metrics import default_extractors, evaluate
 from .pipeline import save_model
 
@@ -160,6 +160,7 @@ class Trainer:
             stats.update(r1=r1.detach(), r2=r2.detach())
         if self.encoder is not None:
             t_cls, t_tok = self.encoder(shift_images(mb.images224, pr, mc.latent_res))
+            t_tok = resize_tokens(t_tok, mc.tokens_side)
             with self._autocast():
                 p_cls, p_tok = self.D.repa_project(hidden[:b])
             align = repa_loss(p_cls, p_tok, t_cls, t_tok)
