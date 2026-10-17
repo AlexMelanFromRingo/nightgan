@@ -65,7 +65,7 @@ class Trainer:
                     old, new = to_dict(saved_model), to_dict(model_cfg)
                     diff = ', '.join(f'{k}: {old[k]} -> {new[k]}' for k in new if old[k] != new[k])
                     raise ConfigMismatch(f'{self.run_dir} holds a run with another model configuration ({diff}); use '
-                                         f'another run folder, or force the new configuration to start over here')
+                                         f'another run folder, or --force-config to start over in this one')
                 self._move_old_snapshots()
                 resume = False
         if model_cfg is None:
@@ -90,6 +90,7 @@ class Trainer:
 
         torch.manual_seed(cfg.seed)
         self.G = Generator(mc).to(self.device)
+        self.G.checkpointing = cfg.checkpointing
         self.D = Discriminator(mc).to(self.device)
         self.ema = EMA(self.G)
         lr_g, lr_d = cfg.resolved_lr(mc)

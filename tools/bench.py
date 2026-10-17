@@ -60,11 +60,10 @@ def main():
         (root / 'data').mkdir()
         synthetic_dataset(root / 'data', 2048, 4, latent_res, args.classes)
         repa = args.repa_encoder != 'none'
-        mc = model_config_for(args.preset, latent_res, 4, args.classes, repa_dim=REPA_DIMS[args.repa_encoder],
-                              checkpointing=args.checkpointing)
+        mc = model_config_for(args.preset, latent_res, 4, args.classes, repa_dim=REPA_DIMS[args.repa_encoder])
         tc = TrainConfig(batch=args.batch, micro_batch=args.micro_batch, compile=not args.no_compile,
                          repa_encoder=args.repa_encoder, repa_weight=1.0 if repa else 0.0, eval_every_kimg=0,
-                         sample_every_kimg=0, snapshot_minutes=1e9)
+                         sample_every_kimg=0, snapshot_minutes=1e9, checkpointing=args.checkpointing)
         t = Trainer(root / 'data', root / 'run', mc, tc, device='cuda', log=print)
         for _ in range(args.warmup):
             t.train_step()

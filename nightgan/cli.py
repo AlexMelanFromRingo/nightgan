@@ -1,8 +1,10 @@
 """Command line interface: nightgan prepare | train | generate | interpolate | eval."""
 
 import argparse
+import json
 import re
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import torch
@@ -59,20 +61,22 @@ MODEL_FLAGS = ('dim', 'depth', 'heads', 'd_dim', 'd_depth', 'd_heads', 'z_dim', 
 
 
 def cmd_train(args):
-    from .config import TrainConfig, model_config_for
+    from .config import ModelConfig, TrainConfig, from_dict, model_config_for
     from .data import load_meta
     from .trainer import Trainer
     meta = load_meta(args.data)
     run = Path(args.run)
     overrides = {k: getattr(args, k) for k in MODEL_FLAGS if getattr(args, k) is not None}
-    resuming = (run / 'config.json').exists()
+    saved = json.loads((run / 'config.json').read_text()) if (run / 'config.json').exists() else None
     model_cfg = None
-    if not resuming or args.preset or overrides or args.checkpointing:
+    repa_dim = REPA_DIMS.get(args.repa_encoder, 768) if args.repa_weight > 0 else 0
+    if saved is None or args.preset:
         patch = overrides.pop('patch', None)
         model_cfg = model_config_for(args.preset or 'S', latent_res=meta['latent']['resolution'],
                                      latent_channels=meta['latent']['channels'], num_classes=len(meta['classes'] or []),
-                                     patch=patch, repa_dim=REPA_DIMS.get(args.repa_encoder, 768)
-                                     if args.repa_weight > 0 else 0, checkpointing=args.checkpointing, **overrides)
+                                     patch=patch, repa_dim=repa_dim, **overrides)
+    elif overrides:  # on resume, model flags apply on top of the saved configuration
+        model_cfg = replace(from_dict(ModelConfig, saved['model']), **overrides)
     train_cfg = TrainConfig(
         batch=args.batch, micro_batch=args.micro_batch, lr_g=args.lr_g, lr_d=args.lr_d, gamma=args.gamma,
         gp_sigma=args.gp_sigma, cons_weight=args.cons_weight, repa_weight=args.repa_weight,
@@ -80,7 +84,7 @@ def cmd_train(args):
         aug_p=args.aug_p, ema_halflife_kimg=args.ema_halflife_kimg, kimg=args.kimg,
         time_limit=parse_duration(args.time) if args.time else None, eval_every_kimg=args.eval_every_kimg,
         eval_num=args.eval_num, sample_every_kimg=args.sample_every_kimg, snapshot_minutes=args.snapshot_minutes,
-        compile=not args.no_compile, seed=args.seed)
+        compile=not args.no_compile, checkpointing=args.checkpointing, seed=args.seed)
     trainer = Trainer(args.data, run, model_cfg, train_cfg, device=args.device, force_config=args.force_config,
                       log=lambda msg: print(msg, flush=True))
     summary = trainer.run()

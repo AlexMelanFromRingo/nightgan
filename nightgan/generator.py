@@ -51,6 +51,7 @@ class Generator(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
         self.cfg = cfg
+        self.checkpointing = False  # recompute the blocks in the backward pass (a training option)
         dim, side = cfg.dim, cfg.tokens_side
         self.register_buffer('pos', sincos_2d(dim, side)[None], persistent=False)
         cos, sin = rope_freqs(grid_coords(side), dim // cfg.heads)
@@ -105,7 +106,7 @@ class Generator(nn.Module):
         x = self.pos.expand(z.shape[0], -1, -1)
         acc, stages, head = None, [], 0
         for i, block in enumerate(self.blocks):
-            if cfg.checkpointing and torch.is_grad_enabled():
+            if self.checkpointing and torch.is_grad_enabled():
                 x = checkpoint(block, x, c, self.rope_cos, self.rope_sin, use_reentrant=False)
             else:
                 x = block(x, c, self.rope_cos, self.rope_sin)

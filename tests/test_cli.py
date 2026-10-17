@@ -98,7 +98,18 @@ def test_training_again_resumes_and_a_changed_model_is_refused(trained, capsys):
     assert 'resumed' in capsys.readouterr().out
     changed = [a if a != '32' else '48' for a in TINY]
     assert main(['train', str(trained / 'data'), str(run), '--kimg', '0.1'] + changed) == 2
-    assert 'dim: 32 -> 48' in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert 'dim: 32 -> 48' in err and '--force-config' in err
+
+
+def test_resuming_with_runtime_flags_only(trained, capsys):
+    run = trained / 'run'
+    runtime = ['--batch', '8', '--micro-batch', '4', '--no-compile', '--device', 'cpu', '--repa-encoder', 'none']
+    # no model flags at all: the saved model configuration is used
+    assert main(['train', str(trained / 'data'), str(run), '--kimg', '0.056', '--checkpointing'] + runtime) == 0
+    assert 'resumed' in capsys.readouterr().out
+    # one model flag on top of the saved configuration, equal to the saved value
+    assert main(['train', str(trained / 'data'), str(run), '--kimg', '0.064', '--depth', '4'] + runtime) == 0
 
 
 def test_python_api(trained):

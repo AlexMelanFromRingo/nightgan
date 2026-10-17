@@ -74,7 +74,7 @@ def test_gradient_checkpointing_gives_identical_gradients():
     G(z).square().mean().backward()
     ref = [p.grad.clone() for p in G.parameters()]
     G.zero_grad()
-    G.cfg.checkpointing = True
+    G.checkpointing = True
     G(z).square().mean().backward()
     for p, r in zip(G.parameters(), ref):
         torch.testing.assert_close(p.grad, r)

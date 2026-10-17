@@ -25,7 +25,6 @@ class ModelConfig:
     repa_dim: int = 768         # feature size of the REPA target encoder, 0: no projector
     cmap_dim: int = 2048        # size of the projection discriminator head
     num_scales: int = 4
-    checkpointing: bool = False
 
     @property
     def tokens_side(self) -> int:
@@ -71,6 +70,7 @@ class TrainConfig:
     snapshot_minutes: float = 30.0
     keep_snapshots: int = 3
     compile: bool = True
+    checkpointing: bool = False         # gradient checkpointing of the generator blocks
     seed: int = 0
 
     def resolved_lr(self, model: ModelConfig) -> tuple[float, float]:

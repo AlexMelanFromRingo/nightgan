@@ -105,6 +105,13 @@ def test_a_different_model_config_is_refused_but_training_options_may_change(dat
     assert forced.step == 0 and forced.model_cfg.dim == 48
 
 
+def test_gradient_checkpointing_is_a_training_option(dataset, tmp_path):
+    t = make(dataset, tmp_path / 'run', tcfg=train_cfg(checkpointing=True))
+    assert t.G.checkpointing and not hasattr(t.model_cfg, 'checkpointing')
+    t.run(max_steps=1)
+    assert make(dataset, tmp_path / 'run').step == 1   # resuming without it is not a model change
+
+
 def test_model_config_must_match_the_dataset(dataset, tmp_path):
     with pytest.raises(ValueError, match='latent_channels'):
         make(dataset, tmp_path / 'run', mcfg=model_cfg(latent_channels=4))
