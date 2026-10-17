@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nightgan"
+version = "0.1.0"
+description = "A latent-space transformer GAN that trains on a single consumer GPU"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Alex Melan"}]
+dependencies = [
+    "torch>=2.4",
+    "numpy>=1.22",
+    "pillow>=9.1",
+    "tqdm>=4.60",
+    "safetensors>=0.4",
+    "diffusers>=0.30",
+    "huggingface_hub>=0.23",
+    "pytorch-fid>=0.3",
+    "scipy>=1.9",
+]
+
+[project.optional-dependencies]
+video = ["imageio>=2.20", "imageio-ffmpeg>=0.4"]
+tensorboard = ["tensorboard>=2.10"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+nightgan = "nightgan.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["nightgan*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: downloads pretrained weights (needs network)"]
+addopts = "-m 'not slow'"
