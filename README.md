@@ -1,138 +1,209 @@
-# nightgan
+<div align="center">
 
-A GAN you can train on one consumer GPU, built from the strongest published GAN methods of 2024–2026:
-transformer generator and discriminator in the latent space of a frozen autoencoder ([GAT](https://arxiv.org/abs/2509.24935)),
-a scale-wise discriminator with stage consistency ([CAT](https://arxiv.org/abs/2605.26449)),
-the relativistic pairing loss with R1 + R2 ([R3GAN](https://arxiv.org/abs/2501.05441)) computed without double
-backpropagation, and representation alignment of the discriminator to DINOv2 ([REPA](https://arxiv.org/abs/2410.06940)).
+# 🌙 nightgan
 
-- Pure PyTorch: no custom CUDA kernels, no Docker, `pip install` and go.
-- Three commands: `prepare` a folder of images, `train`, `generate`.
-- Resumes where it stopped (Ctrl+C, crash, reboot), picks the batch size that fits your GPU, evaluates FID / KID
-  while training, exports a small `.safetensors` model.
-- Unconditional or class-conditional (one subfolder per class), 128 / 256 / 512 px.
+**A modern GAN you can train overnight on one consumer GPU.**
 
-See [docs/how-it-works.md](docs/how-it-works.md) for the method and [docs/results.md](docs/results.md) for measured
-results.
+Transformer generator and discriminator in the latent space of a frozen VAE, assembled from the strongest GAN
+research of 2024&ndash;2026. Pure PyTorch, `pip install`, three commands.
 
-![FFHQ 256, preset S, 3 hours of training on one RTX 4080 SUPER](docs/assets/ffhq-S-3h.jpg)
+[![tests](https://github.com/AlexMelanFromRingo/nightgan/actions/workflows/tests.yml/badge.svg)](https://github.com/AlexMelanFromRingo/nightgan/actions/workflows/tests.yml)
+![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.4%2B-EE4C2C?logo=pytorch&logoColor=white)
+![CUDA kernels](https://img.shields.io/badge/custom%20CUDA%20kernels-none-76B900?logo=nvidia&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-*FFHQ 256 x 256 after 3 hours on one RTX 4080 SUPER (preset S, FID-10k 22.5); the comparison with StyleGAN2-ADA,
-R3GAN and lightweight-gan at equal time is in progress.*
+<img src="docs/assets/ffhq-S-3h.jpg" width="100%" alt="FFHQ 256x256 samples after 3 hours of training">
 
-## Install
+<sub>FFHQ 256&times;256 after <b>3 hours</b> on one RTX 4080 SUPER &mdash; preset S, FID-10k 22.5, no truncation, no
+cherry-picking.</sub>
 
-Python 3.10 or newer and a PyTorch build with CUDA (see [pytorch.org](https://pytorch.org/get-started/locally/) if
-the default wheel of your platform has no CUDA):
+[Quick start](#-quick-start) &bull; [How it works](#-how-it-works) &bull; [Results](docs/results.md) &bull;
+[Options](#%EF%B8%8F-training-options) &bull; [Python API](#-python-api) &bull; [Troubleshooting](#-troubleshooting)
+
+</div>
+
+---
+
+## ✨ Highlights
+
+| | |
+|---|---|
+| ⚡ **Fast** | 143 images/s on an RTX 4080 SUPER (preset S, 7 GB): **5 M images in a night**, ~5x StyleGAN2-ADA on the same card |
+| 🧠 **State of the art recipe** | [GAT](https://arxiv.org/abs/2509.24935) (ICML 2026) + [CAT](https://arxiv.org/abs/2605.26449) (2026) + [R3GAN](https://arxiv.org/abs/2501.05441) loss + [REPA](https://arxiv.org/abs/2410.06940) with DINOv2 |
+| 📦 **No dependency hell** | no custom CUDA kernels, no Docker, no compiler: `pip install -e .` |
+| 🛟 **Hard to break** | resumes exactly where it stopped, restarts itself after a GPU reset, skips non-finite steps, picks the batch that fits your GPU |
+| 🎯 **Complete** | dataset preparation, training with live FID / KID, generation, interpolation videos, evaluation, a small `.safetensors` model |
+| 🏷️ **Conditional** | one subfolder per class &rarr; `--class` at generation time; 128, 256 and 512 px |
+
+## 🚀 Quick start
 
 ```bash
 git clone https://github.com/AlexMelanFromRingo/nightgan && cd nightgan
-pip install -e .            # add [video] for .mp4 interpolations
+pip install -e .          # PyTorch with CUDA first if your platform's default wheel has none; [video] for .mp4
 ```
-
-The first run downloads the Stable Diffusion VAE (330 MB, Hugging Face), DINOv2 ViT-B/14 (350 MB, torch.hub) and
-the FID Inception network (100 MB); afterwards everything works offline.
-
-## Quick start
 
 ```bash
-# 1. encode the images once (any folder, searched recursively; jpg / png / webp / ...)
-nightgan prepare ~/my_images data/mine --resolution 256
+# 1. encode a folder of images once (searched recursively: jpg, png, webp, ...)
+nightgan prepare ~/my_images data/mine --resolution 256      # --labels dirs: subfolders are classes
 
-# 2. train; running the same command again resumes
+# 2. train; the same command again resumes
 nightgan train data/mine runs/mine --preset S --time 10h
 
-# 3. use it
-nightgan generate runs/mine out/ --seeds 0-63 --grid
+# 3. use the model
+nightgan generate    runs/mine out/ --seeds 0-63 --grid
 nightgan interpolate runs/mine walk.gif --seeds 1,7,42 --frames 60
-nightgan eval runs/mine data/mine --metrics fid,kid
+nightgan eval        runs/mine data/mine --metrics fid,kid,fd_dinov2
 ```
 
-Training writes to the run folder: `samples/` (a grid of fixed seeds every 100k images), `log.jsonl` (losses,
-speed, FID), `checkpoints/` (full training state, every 15 minutes and at the end), `model.safetensors` (the
-generator, latest) and `model-best.safetensors` (best FID so far).
+The run folder fills up with `samples/` (a grid of fixed seeds every 100k images), `log.jsonl` (losses, speed,
+FID), `checkpoints/` (every 15 minutes), `model.safetensors` (latest generator) and `model-best.safetensors`.
+The first run downloads the Stable Diffusion VAE, DINOv2 ViT-B/14 and the FID Inception network (~800 MB in total);
+afterwards everything works offline.
 
-Class-conditional: put each class in its own subfolder and prepare with `--labels dirs`, then
-`nightgan generate runs/mine out/ --class 2`.
+## 🧩 How it works
 
-## Presets and speed
+```mermaid
+flowchart LR
+    subgraph prep["nightgan prepare (once)"]
+        img[images] --> enc[frozen SD-VAE encoder] --> lat["latents 4×32×32<br/>(+ mirror)"]
+    end
+    subgraph gen["Generator · transformer"]
+        z["z + class"] --> map[mapping MLP] -. modulates .-> blocks
+        pos["16×16 position tokens"] --> blocks["blocks 1…12<br/>RMSNorm · qk-norm · 2D RoPE · SwiGLU"]
+        blocks --> heads["4 output heads, summed<br/>→ stages s1 … s4"]
+    end
+    subgraph disc["Discriminator · transformer"]
+        dsc["4 scales: 4² 8² 16² 32²<br/>per-scale [cls], attention within a scale"]
+    end
+    heads -->|"stage k at scale k"| dsc
+    lat -->|real pyramid| dsc
+    dsc --> loss["RpGAN + R1/R2 (finite differences)<br/>+ stage consistency"]
+    dino[frozen DINOv2] -->|REPA targets| dsc
+    heads --> dec[VAE decoder] --> out[images]
+```
 
-Measured on an RTX 4080 SUPER (16 GB, WSL2), batch 256, bf16, `torch.compile`:
+- **Latent space.** A 256 px image is a 4&times;32&times;32 latent of the Stable Diffusion VAE: the networks see 16&times;16
+  tokens instead of 65 536 pixels, and no image is decoded during training.
+- **Generator** (GAT): the latent `z` enters only through a mapping network that modulates every transformer block;
+  four output heads add up to the image, and their partial sums are four *stages*.
+- **Discriminator** (CAT): judges stage *k* at resolution 1/2<sup>3&minus;k</sup>, with a [cls] token per scale and
+  block-diagonal attention; a projection head for classes.
+- **Loss** (R3GAN): relativistic pairing loss with zero-centered R1 and R2 penalties, estimated by finite
+  differences, so fused attention works and no double backpropagation is needed.
+- **Stage consistency** (CAT) keeps the intermediate stages close to the final output; **REPA** aligns the
+  discriminator's features with DINOv2, which helps most on small datasets; **DiffAugment** in latent space.
 
-| Preset | Generator / discriminator | Images / s (with REPA) | GPU memory | Images in 10 h |
-|---|---|---|---|---|
-| `S` | 29M / 37M | 143 | 7.2 GB | ~5.1 M |
-| `B` | 117M / 102M | 58 | 9.7 GB | ~2.1 M |
+Details, design decisions and the pitfalls found on the way: [docs/how-it-works.md](docs/how-it-works.md).
 
-The resolution does not change the speed much: 128, 256 and 512 px all use 16 x 16 tokens by default (latent patch
-1, 2 and 4); `--patch` can be lowered for more tokens at a higher cost. Without REPA (`--repa-weight 0`) training is
-~12 % faster.
+## 📊 Presets and speed
 
-## Training options
+Measured on an RTX 4080 SUPER (16 GB, WSL2), batch 256, bf16, `torch.compile`, with REPA:
+
+| Preset | Generator / discriminator | Images / s | GPU memory | Images in 10 h |
+|:---:|:---:|:---:|:---:|:---:|
+| **S** | 29M / 37M | 143 | 7.2 GB | ~5.1 M |
+| **B** | 117M / 102M | 58 | 9.7 GB | ~2.1 M |
+
+128, 256 and 512 px run at the same speed (16&times;16 tokens: latent patch 1, 2, 4). Without REPA
+(`--repa-weight 0`) training is ~12 % faster. Results and the equal-time comparison with StyleGAN2-ADA, R3GAN and
+lightweight-gan: [docs/results.md](docs/results.md).
+
+## ⚙️ Training options
+
+<details>
+<summary><b>All options of <code>nightgan train</code></b></summary>
 
 | Option | Default | Meaning |
 |---|---|---|
 | `--preset` | `S` | model size; `--dim --depth --heads --d-dim --d-depth --d-heads --z-dim --patch` override it |
-| `--time` / `--kimg` | until stopped | training length (`10h`, `90m`, `2d`; total over all sessions) or thousands of images; the learning rate decays over the last third |
+| `--time` / `--kimg` | until stopped | training length (`10h`, `90m`, `2d`; whole sessions, evaluations included) or thousands of images; the learning rate decays over the last third; a resumed run keeps its length |
 | `--batch` | 256 | images per optimizer step |
-| `--micro-batch` | 0 (auto) | images per forward pass; the largest that fits ~85 % of the free GPU memory, the rest is gradient accumulation |
-| `--lr-g`, `--lr-d` | `2e-4 * 768 / width` | learning rates (width-aware, from GAT) |
-| `--gamma` | 0.1 | weight of the R1 + R2 gradient penalties |
-| `--gp-sigma` | 0.03 | noise of the finite-difference gradient penalty |
-| `--cons-weight` | 0.1 | stage consistency (CAT) |
-| `--repa-weight`, `--repa-encoder` | 1, `dinov2_vitb14` | representation alignment of the discriminator; `--repa-weight 0` disables it |
-| `--aug-policy`, `--aug-p` | `color,translation,cutout`, 1 | differentiable augmentation of the latents |
-| `--ema-halflife-kimg` | 350 | half-life of the generator's moving average, in thousands of images |
+| `--micro-batch` | 0 (auto) | images per forward pass: the largest that fits ~85 % of the free GPU memory, the rest is gradient accumulation |
+| `--lr-g`, `--lr-d` | `2e-4 · 768 / width` | learning rates (width-aware, from GAT) |
+| `--gamma` | 0.1 | weight of the R1 + R2 penalties |
+| `--gp-sigma` | 0.03 | noise of the finite-difference penalty (bf16-safe) |
+| `--cons-weight` | 0.1 | stage consistency |
+| `--repa-weight`, `--repa-encoder` | 1, `dinov2_vitb14` | representation alignment; `--repa-weight 0` disables it |
+| `--aug-policy`, `--aug-p` | `color,translation,cutout`, 1 | latent DiffAugment |
+| `--ema-halflife-kimg` | 350 | half-life of the generator average, in thousands of images |
 | `--eval-every-kimg`, `--eval-num` | 500, 10000 | FID / KID during training (0 disables) |
 | `--sample-every-kimg`, `--snapshot-minutes` | 100, 15 | sample grids and snapshots |
-| `--no-compile`, `--checkpointing` | | eager mode (Windows without triton) / gradient checkpointing (less memory) |
+| `--no-compile`, `--checkpointing` | | eager mode (Windows without triton) / gradient checkpointing |
 | `--force-config` | | start over in a run folder with a different model (old snapshots are moved aside) |
 
 `nightgan <command> --help` lists everything.
+</details>
 
-## Datasets
+<details>
+<summary><b>Datasets</b></summary>
 
-`nightgan prepare` center-crops every image to a square, resizes it (Lanczos), applies EXIF rotation, puts transparent
-images on white, converts palette / grayscale / CMYK / 16-bit images, and skips files it cannot read (they are listed
-at the end). Each image is encoded together with its mirror image. The dataset folder holds the latents, 224 px copies
-for REPA and the reference statistics for FID / FD-DINOv2: about 180 KB per image plus up to ~170 MB of statistics.
+`nightgan prepare` center-crops every image to a square, resizes it (Lanczos), applies the EXIF rotation, puts
+transparent images on white, converts palette / grayscale / CMYK / 16-bit images, skips unreadable files, hidden
+files and `__MACOSX` (listed at the end), checks the free disk space first, and encodes each image together with its
+mirror image. About 180 KB per image plus up to ~170 MB of FID / FD-DINOv2 reference statistics.
 
-Small datasets (a few hundred to a few thousand images) work: the latents are augmented (DiffAugment) and the
-discriminator is regularized by REPA. Expect the best results with 10k+ images.
+Small datasets (a few hundred to a few thousand images) work thanks to augmentation and REPA; 10k+ images give the
+best results. Hugging Face parquet datasets: `python tools/parquet_to_images.py <parquet dir> <folder> [--label-column label]`.
+</details>
 
-## Python
+## 🐍 Python API
 
 ```python
 import nightgan
 
-pipe = nightgan.load('runs/mine/model.safetensors')     # or the run folder
+pipe = nightgan.load("runs/mine")                         # or a model.safetensors file
 images = pipe.generate(seeds=range(8), truncation=0.8)   # list of PIL images
-frames = pipe.interpolate([1, 7, 42], frames=30)
+frames = pipe.interpolate([1, 7, 42], frames=30)          # a looping latent walk
+pipe.generate(n=4, class_idx=2)                           # class-conditional models
 ```
 
-## Troubleshooting
+## 🛠 Troubleshooting
 
-- **Training is several times slower than the table on Windows / WSL2.** The GPU memory is full and the driver moves
-  memory to the system RAM instead of failing. Close other GPU programs or set `--micro-batch` lower; the automatic
-  choice leaves 15 % of the free memory unused.
-- **Windows without triton:** use `--no-compile` (~20 % slower).
-- **"non-finite loss … step skipped":** a single skipped step is harmless; three in a row stop the run with a pointer
-  to the last snapshot. Lower `--lr-g` / `--lr-d` or raise `--gamma`, then run the same command to resume.
-- **"GPU error … restarting from the last snapshot":** the GPU driver reset the card (on Windows / WSL2 e.g. after
-  a timeout, or because another program crashed it). Training restarts itself from the last snapshot, up to 5 times
-  in a row.
-- **Offline:** once the weights are downloaded nothing else is needed. The datasets and the run folders can be moved.
+<details>
+<summary><b>Training is several times slower than the table on Windows / WSL2</b></summary>
 
-## Tests
+The GPU memory is full and the driver moves memory to the system RAM instead of failing. Close other GPU programs or
+lower `--micro-batch`; the automatic choice leaves 15 % of the free memory unused.
+</details>
+
+<details>
+<summary><b>"GPU error … restarting from the last snapshot"</b></summary>
+
+The driver reset the GPU (on Windows / WSL2 e.g. after a timeout, or because another program crashed it). Training
+restarts itself from the last snapshot, up to 5 times in a row. Avoid running other CUDA programs on the same GPU
+during long runs.
+</details>
+
+<details>
+<summary><b>"non-finite loss … step skipped"</b></summary>
+
+A single skipped step is harmless; three in a row stop the run after writing a snapshot. Lower `--lr-g` / `--lr-d`
+or raise `--gamma`, then run the same command to resume.
+</details>
+
+<details>
+<summary><b>Windows without triton</b></summary>
+
+`torch.compile` needs triton; use `--no-compile` (~20 % slower). WSL2 is the faster way to run nightgan on Windows.
+</details>
+
+## 🧪 Tests
 
 ```bash
-pip install -e .[dev] && pytest            # offline, ~40 s
-pytest -m slow                             # with the pretrained networks (downloads them)
+pip install -e ".[dev]" && pytest      # offline, CPU, ~2 min
+pytest -m slow                         # with the pretrained networks (downloads them)
 ```
 
-## Credits and licenses
+## 📚 Credits
 
-nightgan is MIT licensed. It uses the Stable Diffusion VAE `stabilityai/sd-vae-ft-mse` (MIT), DINOv2 (Apache-2.0) and
-the FID InceptionV3 port of pytorch-fid (Apache-2.0). The method combines GAT (Hyun, Lee, Heo, ICML 2026), CAT
-(arXiv 2605.26449), R3GAN (Huang et al., NeurIPS 2024), REPA (Yu et al., ICLR 2025) and DiffAugment (Zhao et al., 2020);
-the code is written from the papers.
+nightgan is [MIT licensed](LICENSE); the code is written from the papers. It builds on:
+
+- **GAT** &mdash; Hyun, Lee, Heo. *Scalable GANs with Transformers.* ICML 2026. [arXiv:2509.24935](https://arxiv.org/abs/2509.24935)
+- **CAT** &mdash; *Cross-scale Aligned Supervision for Training GANs.* 2026. [arXiv:2605.26449](https://arxiv.org/abs/2605.26449)
+- **R3GAN** &mdash; Huang, Gokaslan, Kuleshov, Tompkin. *The GAN is dead; long live the GAN!* NeurIPS 2024. [arXiv:2501.05441](https://arxiv.org/abs/2501.05441)
+- **REPA** &mdash; Yu et al. *Representation Alignment for Generation.* ICLR 2025. [arXiv:2410.06940](https://arxiv.org/abs/2410.06940)
+- **DiffAugment** &mdash; Zhao et al. NeurIPS 2020. [arXiv:2006.10738](https://arxiv.org/abs/2006.10738)
+
+Pretrained networks used: Stable Diffusion VAE `stabilityai/sd-vae-ft-mse` (MIT), DINOv2 (Apache-2.0), the FID
+InceptionV3 of pytorch-fid (Apache-2.0).
