@@ -164,3 +164,23 @@ def test_the_time_limit_counts_evaluations_and_snapshots(dataset, tmp_path, monk
     monkeypatch.setattr(Trainer, 'evaluate', lambda self: time_module.sleep(1.0))
     t.run()
     assert t.train_seconds >= 2.5   # three evaluations in the loop: the whole session counts, not only the steps
+
+
+def test_a_truncated_latest_snapshot_falls_back_to_the_previous_one(dataset, tmp_path):
+    t = make(dataset, tmp_path / 'run')
+    t.run(max_steps=2)
+    t.run(max_steps=1)
+    latest = sorted((tmp_path / 'run' / 'checkpoints').glob('state-*.pt'))[-1]
+    latest.write_bytes(latest.read_bytes()[:1000])   # e.g. a power loss while writing
+    resumed = make(dataset, tmp_path / 'run')
+    assert resumed.step == 2
+
+
+def test_resuming_on_a_smaller_dataset_restarts_its_epoch(tmp_path, dataset):
+    t = make(dataset, tmp_path / 'run')
+    t.run(max_steps=3)                     # 24 of 32 images into the first epoch
+    write_images(tmp_path / 'small', 10, seed=9)
+    prepare(tmp_path / 'small', tmp_path / 'small_data', resolution=32, autoencoder='pixel', device='cpu', batch=8,
+            workers=1, extractors={'inception': mean_color}, progress=False)
+    resumed = make(tmp_path / 'small_data', tmp_path / 'run')
+    assert resumed.data.next(8).latents.shape[0] == 8

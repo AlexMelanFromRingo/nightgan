@@ -56,6 +56,8 @@ class Trainer:
 
         saved = self._read_json(self.run_dir / 'config.json')
         resume = saved is not None
+        if saved is not None and saved.get('data') != str(self.data_dir.resolve()):
+            self.log(f'note: this run was trained on {saved.get("data")}, it continues on {self.data_dir}')
         if saved is not None:
             saved_model = from_dict(ModelConfig, saved['model'])
             if model_cfg is None:
@@ -452,10 +454,17 @@ class Trainer:
         return path
 
     def _resume(self):
-        snapshots = self._snapshots()
-        if not snapshots:
+        state, path = None, None
+        for path in reversed(self._snapshots()):  # a snapshot cut short (power loss) falls back to the one before
+            try:
+                state = torch.load(path, map_location='cpu', weights_only=True)
+                break
+            except Exception as e:
+                self.log(f'cannot read {path} ({type(e).__name__}), trying the previous snapshot')
+        if state is None:
+            if path is not None:
+                raise RuntimeError(f'none of the snapshots in {self.run_dir / "checkpoints"} can be read')
             return
-        state = torch.load(snapshots[-1], map_location='cpu', weights_only=True)
         self.G.load_state_dict(state['G'])
         self.D.load_state_dict(state['D'])
         self.ema.load_state_dict(state['G_ema'])
@@ -468,7 +477,7 @@ class Trainer:
         torch.set_rng_state(state['rng_cpu'])
         if self.cuda and 'rng_cuda' in state:
             torch.cuda.set_rng_state_all(state['rng_cuda'])
-        self.log(f'resumed {snapshots[-1]} at {self.cur_nimg / 1000:.1f} kimg')
+        self.log(f'resumed {path} at {self.cur_nimg / 1000:.1f} kimg')
 
     def _move_old_snapshots(self):
         old = self.run_dir / 'checkpoints'

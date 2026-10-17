@@ -353,4 +353,6 @@ class TrainSet:
 
     def load_state_dict(self, state: dict):
         self.seed, self.epoch, self.position = state['seed'], state['epoch'], state['position']
+        if self.position >= self.count:  # another (smaller) dataset than the one the state was saved with
+            self.epoch, self.position = self.epoch + 1, 0
         self._order = None
