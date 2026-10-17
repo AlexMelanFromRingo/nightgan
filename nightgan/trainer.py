@@ -232,12 +232,14 @@ class Trainer:
         for opt, lr in ((self.opt_g, self.base_lr[0]), (self.opt_d, self.base_lr[1])):
             for group in opt.param_groups:
                 group['lr'] = lr * factor
-        batches = [self.data.next(self.micro_batch) for _ in range(n_acc)]
         zero = torch.zeros((), device=self.device)
         stats = {k: zero for k in STAT_KEYS}
 
         self.D.requires_grad_(True)
-        for mb in batches:
+        batches = []
+        for _ in range(n_acc):  # fetched one by one: reading the next batch overlaps the GPU work on this one
+            mb = self.data.next(self.micro_batch)
+            batches.append(mb)
             for k, v in self._d_micro(mb, n_acc).items():
                 stats[k] = stats[k] + v / n_acc
         clip = cfg.grad_clip if cfg.grad_clip > 0 else math.inf

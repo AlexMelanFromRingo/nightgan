@@ -274,13 +274,54 @@ class Batch:
     orient: torch.Tensor            # [B] 0: original, 1: mirrored
 
 
+class _RowReader:
+    """Reads rows of a uint8 `.npy` file with positional reads from several threads (they release the GIL and the disk
+    serves them in parallel). Reading rows through a memory map costs a page fault per 4 KB page, in the calling
+    thread. Platforms without `os.preadv` (Windows) fall back to the memory map."""
+
+    def __init__(self, path: Path, workers: int):
+        self.array = np.load(path, mmap_mode='r')
+        self.row_shape = self.array.shape[1:]
+        self.row_bytes = int(np.prod(self.row_shape))
+        self.offset = self.array.offset
+        self.fd = os.open(path, os.O_RDONLY) if hasattr(os, 'preadv') else None
+        self.pool = ThreadPoolExecutor(workers) if self.fd is not None else None
+
+    def _read(self, out: np.ndarray, rows: np.ndarray, start: int):
+        for i, r in enumerate(rows):
+            view = memoryview(out[start + i].reshape(-1))
+            if os.preadv(self.fd, [view], self.offset + int(r) * self.row_bytes) != self.row_bytes:
+                raise OSError(f'short read in {self.array.filename}')
+
+    def submit(self, rows: np.ndarray):
+        """Starts reading `rows`; returns a function that waits for them and returns `[len(rows), *row_shape]`."""
+        if self.pool is None:
+            return lambda: np.ascontiguousarray(self.array[rows])
+        out = np.empty((len(rows),) + self.row_shape, np.uint8)
+        step = max(1, -(-len(rows) // self.pool._max_workers))
+        futures = [self.pool.submit(self._read, out, rows[i:i + step], i) for i in range(0, len(rows), step)]
+
+        def result():
+            for f in futures:
+                f.result()
+            return out
+        return result
+
+    def close(self):
+        if self.pool is not None:
+            self.pool.shutdown(wait=True)
+            os.close(self.fd)
+            self.pool, self.fd = None, None
+
+
 class TrainSet:
     """Endless, deterministic stream of training batches.
 
     Each epoch is a permutation drawn from `seed` and the epoch number, and so are the orientations; the position in
-    the stream is the whole state, so a resumed run sees exactly the batches it would have seen."""
+    the stream is the whole state, so a resumed run sees exactly the batches it would have seen. With `prefetch`, the
+    REPA images of the next batch are read in the background while the current one is used."""
 
-    def __init__(self, path, device, seed: int = 0, repa: bool = True):
+    def __init__(self, path, device, seed: int = 0, repa: bool = True, prefetch: bool = True, workers: int = 8):
         self.path = Path(path)
         self.meta = meta = load_meta(self.path)
         self.device = torch.device(device)
@@ -300,9 +341,11 @@ class TrainSet:
             if not meta.get('repa_images'):
                 raise DatasetError(f'{self.path} was prepared without REPA images: re-run nightgan prepare with them, '
                                    f'or train without REPA')
-            self.images = np.load(self.path / 'images224.npy', mmap_mode='r')
+            self.images = _RowReader(self.path / 'images224.npy', workers)
+        self.prefetch = prefetch
         self.seed, self.epoch, self.position = seed, 0, 0
         self._order = None
+        self._pending = None   # (batch size, state before it, indices, orientations, image reader)
 
     def _epoch_order(self):
         if self._order is None or self._order[0] != self.epoch:
@@ -325,20 +368,35 @@ class TrainSet:
                 self.epoch, self.position = self.epoch + 1, 0
         return torch.cat(idx), torch.cat(ori)
 
-    def next(self, batch: int) -> Batch:
+    def _start(self, batch: int):
+        state = (self.epoch, self.position)
         idx, ori = self._draw(batch)
+        reader = self.images.submit(idx.numpy()) if self.images is not None else None
+        return batch, state, idx, ori, reader
+
+    def _drop_pending(self):
+        if self._pending is not None:
+            _, (self.epoch, self.position), _, _, reader = self._pending
+            if reader is not None:
+                reader()  # let the reads finish before the buffers go away
+            self._pending = None
+
+    def next(self, batch: int) -> Batch:
+        if self._pending is not None and self._pending[0] != batch:
+            self._drop_pending()
+        current = self._pending if self._pending is not None else self._start(batch)
+        self._pending = self._start(batch) if self.prefetch else None
+        _, _, idx, ori, reader = current
+
         dev = self.latents.device
         moments = self._to_device(self.latents[idx.to(dev), ori.to(dev)])
         z = self.norm.normalize(sample_latent(moments))
         labels = self.labels[idx].to(self.device) if self.labels is not None else None
         images = None
-        if self.images is not None:
-            arr = self.images[idx.numpy()]
-            images = torch.from_numpy(arr).permute(0, 3, 1, 2)
-            flip = ori.bool()
-            if flip.any():
-                images[flip] = images[flip].flip(-1)
-            images = self._to_device(images)
+        if reader is not None:
+            images = self._to_device(torch.from_numpy(reader()).permute(0, 3, 1, 2))
+            flip = ori.to(images.device).bool().view(-1, 1, 1, 1)
+            images = torch.where(flip, images.flip(-1), images)
         return Batch(z, labels, images, idx, ori)
 
     def _to_device(self, t: torch.Tensor) -> torch.Tensor:
@@ -349,10 +407,18 @@ class TrainSet:
         return t.to(self.device)
 
     def state_dict(self) -> dict:
-        return dict(seed=self.seed, epoch=self.epoch, position=self.position)
+        """The position after the batches returned so far (a batch read ahead is not counted)."""
+        epoch, position = self._pending[1] if self._pending is not None else (self.epoch, self.position)
+        return dict(seed=self.seed, epoch=epoch, position=position)
 
     def load_state_dict(self, state: dict):
+        self._drop_pending()
         self.seed, self.epoch, self.position = state['seed'], state['epoch'], state['position']
         if self.position >= self.count:  # another (smaller) dataset than the one the state was saved with
             self.epoch, self.position = self.epoch + 1, 0
         self._order = None
+
+    def close(self):
+        self._drop_pending()
+        if self.images is not None:
+            self.images.close()

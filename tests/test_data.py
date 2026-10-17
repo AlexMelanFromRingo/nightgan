@@ -229,3 +229,16 @@ def test_large_latent_sets_stay_in_pageable_memory(small_set, monkeypatch):
     assert ts.latents.device.type == 'cpu' and not ts.latents.is_pinned()
     b = ts.next(8)
     assert b.latents.device.type == 'cuda' and b.images224.device.type == 'cuda'
+
+
+def test_prefetching_gives_the_same_batches_and_state(small_set):
+    a = TrainSet(small_set, 'cpu', seed=3, prefetch=True)
+    b = TrainSet(small_set, 'cpu', seed=3, prefetch=False)
+    for _ in range(5):
+        x, y = a.next(16), b.next(16)
+        assert torch.equal(x.indices, y.indices) and torch.equal(x.images224, y.images224)
+        assert a.state_dict() == b.state_dict()   # the batch read ahead is not counted as consumed
+    a.load_state_dict(b.state_dict())
+    assert torch.equal(a.next(16).indices, b.next(16).indices)
+    assert torch.equal(a.next(8).indices, b.next(8).indices)   # another batch size drops the batch read ahead
+    a.close()

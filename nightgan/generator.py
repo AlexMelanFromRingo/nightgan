@@ -84,12 +84,11 @@ class Generator(nn.Module):
 
     @torch.no_grad()
     def _update_c_avg(self, c, y):
-        n = self.c_avg.shape[0]
+        # no data-dependent shapes (bincount, boolean indexing): they would synchronize with the GPU
         sums = torch.zeros_like(self.c_avg).index_add_(0, y, c.float())
-        counts = torch.bincount(y, minlength=n).to(sums.dtype)
-        present = counts > 0
-        means = sums[present] / counts[present, None]
-        self.c_avg[present] = means.lerp(self.c_avg[present], C_AVG_BETA)
+        counts = torch.zeros(self.c_avg.shape[0], device=c.device).index_add_(0, y, torch.ones_like(y, dtype=torch.float))
+        means = sums / counts.clamp_min(1)[:, None]
+        self.c_avg.copy_(torch.where(counts[:, None] > 0, means.lerp(self.c_avg, C_AVG_BETA), self.c_avg))
 
     def forward(self, z, y=None, truncation: float = 1.0, return_stages: bool = False, update_avg: bool = False):
         """`truncation` follows StyleGAN: 1 is no truncation, 0 gives the average image of the class."""

@@ -64,6 +64,8 @@ class Discriminator(nn.Module):
         self.register_buffer('rope_sin', sin, persistent=False)
         self.splits = splits
         self.starts = [sum(splits[:k]) for k in range(n)]  # position of each scale's [cls] token
+        # indexing with a device tensor: a Python list would be copied to the GPU synchronously at every call
+        self.register_buffer('cls_index', torch.tensor(self.starts), persistent=False)
 
         hidden = swiglu_hidden(dim, cfg.mlp_ratio)
         self.blocks = nn.ModuleList([DiscriminatorBlock(dim, heads, hidden) for _ in range(cfg.D_depth)])
@@ -91,7 +93,7 @@ class Discriminator(nn.Module):
         for block in self.blocks:
             x = block(x, self.rope_cos, self.rope_sin, self.splits)
 
-        cls = x[:, self.starts]
+        cls = x.index_select(1, self.cls_index)
         h = self.final(self.final_norm(cls))
         if y is None:
             y = torch.zeros(b, dtype=torch.long, device=x.device)
