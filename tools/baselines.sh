@@ -10,7 +10,8 @@
 #   FFHQ_DATA    nightgan dataset folder (nightgan prepare), for the reference statistics
 #   SG3          the modernized StyleGAN3 fork (github.com/AlexMelanFromRingo/stylegan3), for StyleGAN2-ADA
 #   R3GAN        R3GAN (github.com/brownvc/R3GAN) with torch_utils/custom_ops.py, misc.py, ops/*_gradfix.py and
-#                dnnlib/util.py taken from the fork (current PyTorch / Python), its own bf16 kernels kept
+#                dnnlib/util.py taken from the fork (current PyTorch / Python), its own bf16 kernels kept, and
+#                float Adam betas in train.py / training/training_loop.py (PyTorch rejects betas=[0, 0])
 #   LWGAN        the lightweight_gan command of an environment with lightweight-gan 1.3.0
 #                (github.com/AlexMelanFromRingo/lightweight-gan-cpu)
 #   SG3_PY       a Python environment with the fork's requirements.txt
@@ -42,7 +43,7 @@ stylegan2-resume)  # continue an interrupted StyleGAN2 run from its last snapsho
 r3gan)      # R3GAN's FFHQ-256 preset, batch 64 (the paper uses 256 on 8 GPUs) in passes of 8
     cd "$R3GAN"
     timeout "$BUDGET" "$SG3_PY" train.py --outdir="$OUT/r3gan" --data="$FFHQ_ZIP" --gpus=1 --batch=64 \
-        --g-batch-gpu=8 --d-batch-gpu=8 --mirror=1 --aug=1 --preset=FFHQ-256 --tick=1 --snap=10 \
+        --g-batch-gpu=8 --d-batch-gpu=8 --mirror=1 --aug=1 --preset=FFHQ-256 --tick=1 --snap=10 --metrics=none \
         > "$OUT/r3gan.log" 2>&1 || true ;;
 lightweight-gan)  # lightweight-gan defaults (batch 10 x 4 accumulation), bf16
     timeout "$BUDGET" "$LWGAN" --data "$FFHQ_IMAGES" --name ffhq256 --image-size 256 \
