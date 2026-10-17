@@ -139,7 +139,20 @@ def test_a_non_finite_loss_skips_the_step(dataset, tmp_path, monkeypatch):
     assert all(torch.isfinite(p).all() for p in t.D.parameters())
 
 
-def test_repeated_non_finite_losses_stop_training(dataset, tmp_path, monkeypatch):
+def test_repeated_non_finite_losses_stop_training_with_a_snapshot(dataset, tmp_path, monkeypatch):
     monkeypatch.setattr(trainer_module, 'rpgan_d', lambda real, fake: (real - fake).mean() * float('nan'))
-    with pytest.raises(trainer_module.TrainingDiverged, match='snapshot'):
+    with pytest.raises(trainer_module.TrainingDiverged, match='snapshot') as e:
         make(dataset, tmp_path / 'run').run()
+    snapshots = list((tmp_path / 'run' / 'checkpoints').glob('state-*.pt'))
+    assert len(snapshots) == 1 and str(snapshots[0]) in str(e.value)
+
+
+def test_ctrl_c_stays_handled_during_the_final_evaluation_and_snapshot(dataset, tmp_path, monkeypatch):
+    import signal
+    t = make(dataset, tmp_path / 'run')
+    handlers = []
+    original = Trainer.snapshot
+    monkeypatch.setattr(Trainer, 'snapshot', lambda self: (handlers.append(signal.getsignal(signal.SIGINT)),
+                                                            original(self)))
+    t.run()
+    assert handlers and handlers[-1] == t._on_sigint

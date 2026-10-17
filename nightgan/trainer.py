@@ -214,10 +214,11 @@ class Trainer:
         self._event(dict(type='skipped', phase=phase, step=self.step, kimg=self.cur_nimg / 1000))
         self.log(f'non-finite {phase} loss or gradient at step {self.step}: step skipped')
         if self.bad_streak >= MAX_BAD_STEPS:
-            last = self._snapshots()
-            where = f'the last snapshot is {last[-1]}' if last else 'no snapshot was written yet'
+            # the skipped steps changed no weights, so the current state is the last good one
+            path = self.snapshot()
             raise TrainingDiverged(f'{self.bad_streak} consecutive steps with non-finite losses, training stopped; '
-                                   f'{where}. Lower the learning rates or raise gamma.')
+                                   f'the last good state is in the snapshot {path}. Lower the learning rates or raise '
+                                   f'gamma, then run the same command to resume.')
         return None
 
     def train_step(self) -> dict | None:
@@ -316,20 +317,20 @@ class Trainer:
                 if time.time() - last_snapshot >= cfg.snapshot_minutes * 60:
                     self.snapshot()
                     last_snapshot = time.time()
-        finally:
+            if acc_steps:
+                self._tick(acc, acc_steps, acc_imgs, time.time() - tick_start)
+            finished = self._done()
+            if finished and next_eval is not None and self.last_metrics.get('kimg') != self.cur_nimg / 1000:
+                self.evaluate()
+            self.snapshot()
+            summary = dict(steps=self.step, kimg=self.cur_nimg / 1000, skipped_steps=self.skipped_steps,
+                           interrupted=interrupted, finished=finished, seconds=self.train_seconds,
+                           best_fid=None if math.isinf(self.best_fid) else self.best_fid, metrics=self.last_metrics)
+            self._event(dict(type='end', **summary))
+            return summary
+        finally:  # Ctrl+C stays handled until the final evaluation and snapshot are written
             if old_handler is not None:
                 signal.signal(signal.SIGINT, old_handler)
-        if acc_steps:
-            self._tick(acc, acc_steps, acc_imgs, time.time() - tick_start)
-        finished = self._done()
-        if finished and next_eval is not None and self.last_metrics.get('kimg') != self.cur_nimg / 1000:
-            self.evaluate()
-        self.snapshot()
-        summary = dict(steps=self.step, kimg=self.cur_nimg / 1000, skipped_steps=self.skipped_steps,
-                       interrupted=interrupted, finished=finished, seconds=self.train_seconds,
-                       best_fid=None if math.isinf(self.best_fid) else self.best_fid, metrics=self.last_metrics)
-        self._event(dict(type='end', **summary))
-        return summary
 
     def _on_sigint(self, signum, frame):
         if self._stop:  # a second Ctrl+C aborts immediately
@@ -443,6 +444,7 @@ class Trainer:
         for old in self._snapshots()[:-max(self.train_cfg.keep_snapshots, 1)]:
             old.unlink()
         self.export(self.run_dir / 'model.safetensors')
+        return path
 
     def _resume(self):
         snapshots = self._snapshots()
