@@ -288,6 +288,7 @@ class Trainer:
         next_sample = self._next_multiple(cfg.sample_every_kimg)
         next_eval = self._next_multiple(cfg.eval_every_kimg)
         steps, interrupted = 0, False
+        clock = time.time()  # the time limit counts the whole session: steps, samples, evaluations, snapshots
         try:
             while not self._done():
                 if max_steps is not None and steps >= max_steps:
@@ -295,11 +296,12 @@ class Trainer:
                 if self._stop:
                     interrupted = True
                     break
-                t0 = time.time()
                 stats = self.train_step()
-                self.train_seconds += time.time() - t0
                 steps += 1
                 if stats is None:
+                    now = time.time()
+                    self.train_seconds += now - clock
+                    clock = now
                     continue
                 for k, v in stats.items():
                     acc[k] = acc.get(k, 0) + v
@@ -317,6 +319,9 @@ class Trainer:
                 if time.time() - last_snapshot >= cfg.snapshot_minutes * 60:
                     self.snapshot()
                     last_snapshot = time.time()
+                now = time.time()
+                self.train_seconds += now - clock
+                clock = now
             if acc_steps:
                 self._tick(acc, acc_steps, acc_imgs, time.time() - tick_start)
             finished = self._done()

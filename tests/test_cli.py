@@ -124,3 +124,12 @@ def test_python_api(trained):
 def test_missing_dataset_is_a_clear_error(tmp_path, capsys):
     assert main(['train', str(tmp_path / 'nothing'), str(tmp_path / 'run')] + TINY) == 2
     assert 'prepare' in capsys.readouterr().err
+
+
+def test_a_resumed_run_keeps_its_length_unless_a_new_one_is_given():
+    from argparse import Namespace
+    from nightgan.cli import train_length
+    saved = {'train': {'kimg': 500.0, 'time_limit': None}}
+    assert train_length(Namespace(kimg=None, time=None), saved) == (500.0, None)
+    assert train_length(Namespace(kimg=None, time='2h'), saved) == (None, 7200.0)
+    assert train_length(Namespace(kimg=None, time=None), None) == (None, None)

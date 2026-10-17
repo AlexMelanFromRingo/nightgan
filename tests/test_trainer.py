@@ -156,3 +156,11 @@ def test_ctrl_c_stays_handled_during_the_final_evaluation_and_snapshot(dataset, 
                                                             original(self)))
     t.run()
     assert handlers and handlers[-1] == t._on_sigint
+
+
+def test_the_time_limit_counts_evaluations_and_snapshots(dataset, tmp_path, monkeypatch):
+    import time as time_module
+    t = make(dataset, tmp_path / 'run', tcfg=train_cfg(kimg=3 * STEP_KIMG, eval_every_kimg=STEP_KIMG))
+    monkeypatch.setattr(Trainer, 'evaluate', lambda self: time_module.sleep(1.0))
+    t.run()
+    assert t.train_seconds >= 2.5   # three evaluations in the loop: the whole session counts, not only the steps

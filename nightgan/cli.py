@@ -57,6 +57,15 @@ def cmd_prepare(args):
             print(f'  ... and {len(summary["skipped"]) - 20} more')
 
 
+def train_length(args, saved: dict | None):
+    """`(kimg, time_limit)` of a run: the flags if given, else (when resuming) the length the run was started with."""
+    if args.kimg is not None or args.time is not None:
+        return args.kimg, parse_duration(args.time) if args.time else None
+    if saved is not None:
+        return saved['train'].get('kimg'), saved['train'].get('time_limit')
+    return None, None
+
+
 MODEL_FLAGS = ('dim', 'depth', 'heads', 'd_dim', 'd_depth', 'd_heads', 'z_dim', 'patch', 'cmap_dim')
 
 
@@ -77,12 +86,13 @@ def cmd_train(args):
                                      patch=patch, repa_dim=repa_dim, **overrides)
     elif overrides:  # on resume, model flags apply on top of the saved configuration
         model_cfg = replace(from_dict(ModelConfig, saved['model']), **overrides)
+    kimg, time_limit = train_length(args, saved)
     train_cfg = TrainConfig(
         batch=args.batch, micro_batch=args.micro_batch, lr_g=args.lr_g, lr_d=args.lr_d, gamma=args.gamma,
         gp_sigma=args.gp_sigma, cons_weight=args.cons_weight, repa_weight=args.repa_weight,
         repa_encoder=args.repa_encoder if args.repa_weight > 0 else 'none', aug_policy=args.aug_policy,
-        aug_p=args.aug_p, ema_halflife_kimg=args.ema_halflife_kimg, kimg=args.kimg,
-        time_limit=parse_duration(args.time) if args.time else None, eval_every_kimg=args.eval_every_kimg,
+        aug_p=args.aug_p, ema_halflife_kimg=args.ema_halflife_kimg, kimg=kimg, time_limit=time_limit,
+        eval_every_kimg=args.eval_every_kimg,
         eval_num=args.eval_num, sample_every_kimg=args.sample_every_kimg, snapshot_minutes=args.snapshot_minutes,
         compile=not args.no_compile, checkpointing=args.checkpointing, seed=args.seed)
     trainer = Trainer(args.data, run, model_cfg, train_cfg, device=args.device, force_config=args.force_config,
@@ -206,7 +216,8 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument('data', help='dataset folder from nightgan prepare')
     t.add_argument('run', help='run folder; an existing run is resumed')
     t.add_argument('--preset', choices=['S', 'B'], help='model size: S (overnight, default) or B (several days)')
-    t.add_argument('--time', help='training length, e.g. 10h (total over all sessions of the run)')
+    t.add_argument('--time', help='training length, e.g. 10h (total over all sessions of the run, evaluations '
+                                  'included; a resumed run keeps its length unless a new one is given)')
     t.add_argument('--kimg', type=float, help='training length in thousands of images')
     t.add_argument('--batch', type=int, default=256, help='images per optimizer step (default 256)')
     t.add_argument('--micro-batch', type=int, default=0, help='images per forward pass, 0: the largest that fits')
