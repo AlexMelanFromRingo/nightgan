@@ -25,13 +25,21 @@ def extension(data: bytes) -> str:
     return '.img'
 
 
-def class_names(files, column):
+def class_names(files, column, src: Path):
+    """Label names from the parquet metadata, or from a dataset_infos.json next to the data (Hugging Face)."""
     meta = pq.ParquetFile(files[0]).schema_arrow.metadata or {}
     info = meta.get(b'huggingface')
     if info:
         feature = json.loads(info).get('info', {}).get('features', {}).get(column, {})
         if feature.get('names'):
             return feature['names']
+    for folder in (src, src.parent):
+        infos = folder / 'dataset_infos.json'
+        if infos.exists():
+            for config in json.loads(infos.read_text()).values():
+                names = config.get('features', {}).get(column, {}).get('names')
+                if names:
+                    return names
     return None
 
 
@@ -46,7 +54,7 @@ def main():
     files = sorted(Path(args.src).expanduser().rglob('*.parquet'))
     if not files:
         raise SystemExit(f'no parquet files in {args.src}')
-    names = class_names(files, args.label_column) if args.label_column else None
+    names = class_names(files, args.label_column, Path(args.src).expanduser()) if args.label_column else None
     dst = Path(args.dst).expanduser()
     dst.mkdir(parents=True, exist_ok=True)
     n = 0
