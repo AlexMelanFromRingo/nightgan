@@ -66,7 +66,13 @@ Mirroring is done by the data (both orientations are encoded).
 
 ## Optimization
 
-AdamW with β = (0, 0.99) and no weight decay, learning rate `2e-4 * 768 / width` (width-aware, GAT; 4e-4 for the S
+The default is AdamW with beta1 = 0, as in R3GAN, GAT and StyleGAN: momentum makes the generator and the
+discriminator oscillate around each other. `--optimizer adabelief` is available for comparison; it needs beta1 > 0
+(0.5 by default), because its second moment is the variance of the gradient around its running mean, which is zero
+without momentum.
+
+
+Details: AdamW with β = (0, 0.99) and no weight decay, learning rate `2e-4 * 768 / width` (width-aware, GAT; 4e-4 for the S
 preset), gradient clipping at norm 1, batch 256 with gradient accumulation over micro-batches that fit the GPU, bf16
 autocast with normalization layers kept in bf16 (autocast would return float32 and double the activation memory), and
 `torch.compile` on the transformer blocks (+25 % speed). The generator used for sampling and metrics is an exponential
