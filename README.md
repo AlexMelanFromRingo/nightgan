@@ -15,6 +15,11 @@ backpropagation, and representation alignment of the discriminator to DINOv2 ([R
 See [docs/how-it-works.md](docs/how-it-works.md) for the method and [docs/results.md](docs/results.md) for measured
 results.
 
+![FFHQ 256, preset S, 3 hours of training on one RTX 4080 SUPER](docs/assets/ffhq-S-3h.jpg)
+
+*FFHQ 256 x 256 after 3 hours on one RTX 4080 SUPER (preset S, FID-10k 22.5); the comparison with StyleGAN2-ADA,
+R3GAN and lightweight-gan at equal time is in progress.*
+
 ## Install
 
 Python 3.10 or newer and a PyTorch build with CUDA (see [pytorch.org](https://pytorch.org/get-started/locally/) if
