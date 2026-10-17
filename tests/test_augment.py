@@ -85,3 +85,15 @@ def test_color_is_applied_to_half_of_the_samples_as_in_gat():
     params = sample_aug(4000, 16, 'color', p=1.0, device='cpu')
     changed = (params.brightness.flatten() != 0).float().mean().item()
     assert 0.45 < changed < 0.55
+
+
+def test_augmentation_does_not_synchronize_with_the_gpu(monkeypatch):
+    # a data-dependent Python branch (tensor.any()) stalls the CPU until the GPU catches up
+    calls = []
+    original = torch.Tensor.__bool__
+    monkeypatch.setattr(torch.Tensor, '__bool__', lambda self: calls.append(1) or original(self))
+    x = torch.randn(4, 4, 16, 16)
+    params = sample_aug(4, 16, 'color,translation,cutout', p=1.0, device='cpu')
+    apply_aug(x, params)
+    shift_images(torch.zeros(4, 3, 224, 224, dtype=torch.uint8), params, latent_side=16)
+    assert calls == []

@@ -76,9 +76,10 @@ def apply_aug(x: torch.Tensor, params: AugParams) -> torch.Tensor:
         x = (x - mean) * params.saturation.to(x.dtype) + mean
         mean = x.mean(dim=(1, 2, 3), keepdim=True)
         x = (x - mean) * params.contrast.to(x.dtype) + mean
-    if 'translation' in ops and params.shift.any():
+    # no data-dependent branches (tensor.any() would wait for the GPU): a zero shift / an empty cutout is a no-op
+    if 'translation' in ops:
         x = translate(x, params.shift)
-    if 'cutout' in ops and params.cutout_on.any():
+    if 'cutout' in ops:
         b, _, h, w = x.shape
         size = params.cutout_size
         top = (params.cutout[:, 0] - size // 2).view(b, 1, 1)
@@ -93,7 +94,7 @@ def apply_aug(x: torch.Tensor, params: AugParams) -> torch.Tensor:
 
 def shift_images(images: torch.Tensor, params: AugParams, latent_side: int) -> torch.Tensor:
     """Applies the translation of `params` to images whose side is a multiple of the latent side (rounded otherwise)."""
-    if 'translation' not in params.ops or not params.shift.any():
+    if 'translation' not in params.ops:
         return images
     factor = images.shape[-1] / latent_side
     shift = torch.round(params.shift.float() * factor).long()
