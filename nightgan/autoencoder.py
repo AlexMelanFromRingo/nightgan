@@ -1,5 +1,7 @@
 """Frozen autoencoders that define the space the GAN works in, and the normalization of their latents."""
 
+import warnings
+
 import torch
 
 SD_VAE = 'stabilityai/sd-vae-ft-mse'
@@ -54,9 +56,17 @@ class SDVAE:
 
     def __init__(self, repo_id: str = SD_VAE, device='cuda'):
         from diffusers import AutoencoderKL
+        from diffusers.utils import logging as diffusers_logging
         self.name = repo_id
         self.device = torch.device(device)
-        self.vae = AutoencoderKL.from_pretrained(repo_id).to(self.device).eval().requires_grad_(False)
+        diffusers_logging.set_verbosity_error()  # e.g. the advice to install accelerate
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', message='.*local_dir_use_symlinks.*')
+            try:  # the cached copy first: works offline and does not ask the hub for updates
+                self.vae = AutoencoderKL.from_pretrained(repo_id, local_files_only=True)
+            except (OSError, ValueError):
+                self.vae = AutoencoderKL.from_pretrained(repo_id)
+        self.vae = self.vae.to(self.device).eval().requires_grad_(False)
         self.channels = self.vae.config.latent_channels
         self.factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
