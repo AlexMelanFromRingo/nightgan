@@ -2,7 +2,7 @@
 # Equal-time baselines on FFHQ-256 (docs/results.md). Each run gets the same wall-clock budget on the same GPU;
 # the last snapshot before the budget ends is evaluated with the same code as nightgan (`nightgan eval --images`).
 #
-#   tools/baselines.sh stylegan2|r3gan|lightweight-gan|eval-all
+#   tools/baselines.sh stylegan2|stylegan2-resume|r3gan|lightweight-gan|eval-all
 #
 # Paths (override with environment variables):
 #   FFHQ_IMAGES  folder of the 70k FFHQ 256x256 PNGs (tools/parquet_to_images.py)
@@ -33,6 +33,12 @@ stylegan2)  # StyleGAN2-ADA, FFHQ 256 settings of the StyleGAN2-ADA paper (gamma
     timeout "$BUDGET" "$SG3_PY" train.py --outdir="$OUT/stylegan2" --cfg=stylegan2 --data="$FFHQ_ZIP" --gpus=1 \
         --batch=32 --batch-gpu=8 --gamma=1 --mirror=1 --aug=ada --kimg=100000 --snap=2 --metrics=none \
         > "$OUT/stylegan2.log" 2>&1 || true ;;
+stylegan2-resume)  # continue an interrupted StyleGAN2 run from its last snapshot for the rest of the budget
+    pkl=$(ls -t "$OUT"/stylegan2/*/network-snapshot-*.pkl | head -1)
+    cd "$SG3"
+    timeout "$BUDGET" "$SG3_PY" train.py --outdir="$OUT/stylegan2" --cfg=stylegan2 --data="$FFHQ_ZIP" --gpus=1 \
+        --batch=32 --batch-gpu=8 --gamma=1 --mirror=1 --aug=ada --kimg=100000 --snap=2 --metrics=none \
+        --resume="$pkl" > "$OUT/stylegan2-resume.log" 2>&1 || true ;;
 r3gan)      # R3GAN's FFHQ-256 preset, batch 64 (the paper uses 256 on 8 GPUs) in passes of 8
     cd "$R3GAN"
     timeout "$BUDGET" "$SG3_PY" train.py --outdir="$OUT/r3gan" --data="$FFHQ_ZIP" --gpus=1 --batch=64 \
@@ -56,5 +62,5 @@ eval-all)   # NUM images of the last snapshot of each, scored like nightgan
     done
     mkdir -p "$OUT/eval/lwgan" && find "$OUT"/eval/lwgan-* -name '*-ema.*' -exec mv {} "$OUT/eval/lwgan/" \;
     nightgan eval "$FFHQ_DATA" --images "$OUT/eval/lwgan" --metrics fid,kid,fd_dinov2 | tee "$OUT/eval/lwgan.txt" ;;
-*) echo "usage: $0 stylegan2|r3gan|lightweight-gan|eval-all"; exit 1 ;;
+*) echo "usage: $0 stylegan2|stylegan2-resume|r3gan|lightweight-gan|eval-all"; exit 1 ;;
 esac
