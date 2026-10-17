@@ -219,3 +219,13 @@ def test_kid_reference_features_are_a_random_subset_of_all_classes(tmp_path, mon
     assert feats.shape == (20, 3)
     counts = np.bincount(feats.argmax(1), minlength=3)
     assert (counts >= 3).all(), counts
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='needs a GPU')
+def test_large_latent_sets_stay_in_pageable_memory(small_set, monkeypatch):
+    import nightgan.data as data_module
+    monkeypatch.setattr(data_module, 'GPU_LATENT_BYTES', 0)   # pretend the dataset is too big for the GPU
+    ts = TrainSet(small_set, 'cuda', seed=0)
+    assert ts.latents.device.type == 'cpu' and not ts.latents.is_pinned()
+    b = ts.next(8)
+    assert b.latents.device.type == 'cuda' and b.images224.device.type == 'cuda'

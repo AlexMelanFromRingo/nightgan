@@ -20,6 +20,7 @@ FORMAT = 1
 IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tif', '.tiff', '.gif'}
 REPA_SIZE = 224
 MAX_STORED_FEATURES = 10000     # features kept for KID
+GPU_LATENT_BYTES = 2 ** 30      # latent sets up to this size are kept on the GPU, larger ones in RAM
 
 
 class DatasetError(Exception):
@@ -286,8 +287,9 @@ class TrainSet:
         self.count = n = meta['count']
         lat = np.load(self.path / 'latents.npy', mmap_mode='r')[:n]
         self.latents = torch.from_numpy(np.array(lat))  # read into memory
-        if self.device.type == 'cuda':
-            self.latents = self.latents.to(self.device) if self.latents.nbytes < 2 ** 30 else self.latents.pin_memory()
+        if self.device.type == 'cuda' and self.latents.nbytes <= GPU_LATENT_BYTES:
+            self.latents = self.latents.to(self.device)
+        # larger sets stay in pageable RAM; only each batch is pinned for the copy (WSL2 limits pinned memory)
         self.orientations = self.latents.shape[1]
         self.norm = LatentNorm(meta['latent_mean'], meta['latent_std'])
         self.class_names = meta['classes'] or []
@@ -326,7 +328,7 @@ class TrainSet:
     def next(self, batch: int) -> Batch:
         idx, ori = self._draw(batch)
         dev = self.latents.device
-        moments = self.latents[idx.to(dev), ori.to(dev)].to(self.device, non_blocking=True)
+        moments = self._to_device(self.latents[idx.to(dev), ori.to(dev)])
         z = self.norm.normalize(sample_latent(moments))
         labels = self.labels[idx].to(self.device) if self.labels is not None else None
         images = None
@@ -336,8 +338,15 @@ class TrainSet:
             flip = ori.bool()
             if flip.any():
                 images[flip] = images[flip].flip(-1)
-            images = images.to(self.device, non_blocking=True)
+            images = self._to_device(images)
         return Batch(z, labels, images, idx, ori)
+
+    def _to_device(self, t: torch.Tensor) -> torch.Tensor:
+        if t.device == self.device:
+            return t
+        if self.device.type == 'cuda':
+            return t.pin_memory().to(self.device, non_blocking=True)
+        return t.to(self.device)
 
     def state_dict(self) -> dict:
         return dict(seed=self.seed, epoch=self.epoch, position=self.position)
