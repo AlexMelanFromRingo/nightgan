@@ -58,7 +58,7 @@ class InceptionFeatures:
         self.device = torch.device(device)
         self.model = InceptionV3([InceptionV3.BLOCK_INDEX_BY_DIM[2048]]).to(self.device).eval().requires_grad_(False)
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def __call__(self, images: torch.Tensor) -> torch.Tensor:
         x = images.to(self.device).float() / 255
         with torch.autocast(self.device.type, enabled=False):

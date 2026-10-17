@@ -32,7 +32,7 @@ class DinoV2:
         self.model = self.model.to(self.device).eval().requires_grad_(False)
         self.dim = self.model.embed_dim
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def __call__(self, images: torch.Tensor):
         x = _prepare(images.to(self.device))
         with torch.autocast(self.device.type, torch.bfloat16, enabled=self.bf16):
@@ -49,7 +49,7 @@ class RandomConvEncoder(nn.Module):
         gen = torch.Generator().manual_seed(seed)
         self.register_buffer('weight', torch.randn(dim, 3, 14, 14, generator=gen) / 42)
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def __call__(self, images: torch.Tensor):
         x = _prepare(images.to(self.weight.device))
         tokens = F.conv2d(x, self.weight, stride=14).flatten(2).transpose(1, 2)
