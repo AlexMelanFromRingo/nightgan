@@ -78,6 +78,25 @@ Rows: cat, dog, wild (the class given to the generator), no truncation, no cherr
 
 ![AFHQ-v2, preset S, 2 hours](assets/afhq-S-2h.jpg)
 
+## Pokemon (833 images), preset S — a weak spot
+
+`nightgan train data/pokemon runs/pokemon --preset S --time 1.5h`, FID / KID on 5 000 generated images against the 833
+dataset images (FID is strongly biased with so few reference images; KID is the more meaningful number here).
+
+| Training time | Images seen | FID-5k | KID (x1e-3) |
+|---|---|---|---|
+| 0.5 h | 0.20 M | 141.7 | 121.5 |
+| 1.0 h | 0.40 M | 126.4 | 103.9 |
+| 1.5 h | 0.58 M | 117.4 | 94.0 |
+
+The samples have the colors, outlines and white backgrounds of the dataset and do not collapse, but they are not yet
+coherent creatures:
+
+![Pokemon, preset S, 1.5 hours](assets/pokemon-S-1.5h.jpg)
+
+On a dataset this small nightgan does not yet do what it does on FFHQ / AFHQ. A run of lightweight-gan (FastGAN, made
+for few-shot data) on the same images and time is queued for comparison.
+
 ## Ablations (FFHQ 256, preset S, FID-10k at 500 kimg)
 
 Each run follows the schedule of the main run and is evaluated at 500 kimg (main run: 47.88 / 47.97).
@@ -94,7 +113,7 @@ Each run follows the schedule of the main run and is evaluated at 500 kimg (main
   FID-vs-time curves (StyleGAN2 snapshots at 1 h, 2 h, 3 h).
 - FID-50k of the final models.
 - The remaining ablations, and a second seed to see the run-to-run spread.
-- The 833-image Pokemon set (1.5 h).
+- lightweight-gan on the Pokemon set (1.5 h), for comparison.
 
 ## Found along the way
 
