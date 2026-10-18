@@ -99,20 +99,31 @@ for few-shot data) on the same images and time is queued for comparison.
 
 ## Ablations (FFHQ 256, preset S, FID-10k at 500 kimg)
 
-Each run follows the schedule of the main run and is evaluated at 500 kimg (main run: 47.88 / 47.97).
+Each run follows the schedule of the main run (`--time 3h`) and is stopped after its evaluation at 500 kimg (~1 h).
+One seed per variant, except the default configuration, which was run with two seeds.
 
-| Variant | FID-10k at 500 kimg |
-|---|---|
-| default (AdamW, beta1 0) | 47.88 |
-| AdaBelief, beta1 0.5 | 58.31 |
-| no REPA / no stage consistency / no DiffAugment / second seed | running |
+| Variant | FID-10k at 500 kimg | KID-10k (x1e-3) |
+|---|---|---|
+| default, seed 0 (the main run) | 47.88 | 29.28 |
+| default, seed 1 | 58.88 | 42.29 |
+| AdaBelief, beta1 0.5 | 58.31 | 40.41 |
+| no stage consistency (`--cons-weight 0`) | 48.01 | 30.95 |
+| no REPA (`--repa-weight 0`) | 65.26 | 45.77 |
+| no DiffAugment (`--aug-p 0`) | 74.32 | 60.22 |
+
+The two seeds of the default configuration differ by 11 FID at this point, so only large differences mean something:
+
+- **DiffAugment matters** even with 70k images: without it FID is far worse than either seed.
+- **REPA likely helps**: without it FID is worse than both seeds; more seeds are needed to be sure.
+- **AdaBelief** and **removing the stage consistency** stay within the seed spread at 1 h: no measurable effect. CAT
+  reports the gain of the consistency loss for longer runs and larger models.
 
 ## Planned
 
 - Finish R3GAN and lightweight-gan to 3 h, then FID-10k / KID / FD-DINOv2 of all models with the same code, and
   FID-vs-time curves (StyleGAN2 snapshots at 1 h, 2 h, 3 h).
 - FID-50k of the final models.
-- The remaining ablations, and a second seed to see the run-to-run spread.
+- More seeds per ablation (the spread between seeds is ~11 FID at 1 h).
 - lightweight-gan on the Pokemon set (1.5 h), for comparison.
 
 ## Found along the way
