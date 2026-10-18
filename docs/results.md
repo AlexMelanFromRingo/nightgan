@@ -63,6 +63,21 @@ Notes on the runs:
 - The exact commands and the patches the baselines needed for current PyTorch are in
   [tools/baselines.sh](../tools/baselines.sh).
 
+## AFHQ-v2 256 x 256 with classes, preset S
+
+15 803 images in 3 classes (cat, dog, wild), `nightgan prepare --labels dirs`, then
+`nightgan train data/afhq runs/afhq --preset S --time 2h` (the class becomes an input of the mapping network and a
+projection head of the discriminator). 138–145 img/s.
+
+| Training time | Images seen | FID-10k | KID-10k (x1e-3) |
+|---|---|---|---|
+| 1.1 h | 0.50 M | 37.95 | 18.71 |
+| 2.0 h | 0.87 M | 22.33 | 10.32 |
+
+Rows: cat, dog, wild (the class given to the generator), no truncation, no cherry-picking:
+
+![AFHQ-v2, preset S, 2 hours](assets/afhq-S-2h.jpg)
+
 ## Ablations (FFHQ 256, preset S, FID-10k at 500 kimg)
 
 Each run follows the schedule of the main run and is evaluated at 500 kimg (main run: 47.88 / 47.97).
@@ -79,7 +94,7 @@ Each run follows the schedule of the main run and is evaluated at 500 kimg (main
   FID-vs-time curves (StyleGAN2 snapshots at 1 h, 2 h, 3 h).
 - FID-50k of the final models.
 - The remaining ablations, and a second seed to see the run-to-run spread.
-- AFHQ-v2 with its 3 classes (2 h) and the 833-image Pokemon set (1.5 h).
+- The 833-image Pokemon set (1.5 h).
 
 ## Found along the way
 
