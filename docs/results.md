@@ -43,11 +43,10 @@ Speed is training throughput after warm-up; quality is the last snapshot before 
 |---|---|---|---|---|---|
 | **nightgan S** | 143 img/s | 1.42 M in 3 h | **22.98** | **10.8** | **574** |
 | StyleGAN2-ADA (`--cfg=stylegan2`, batch 32, gamma 1, CUDA kernels) | 26 img/s | 0.27 M in 3 h 03 min | 61.30 | 43.7 | 1356 |
-| R3GAN (FFHQ-256 preset, batch 64, its bf16 CUDA kernels) | 3.7 img/s | being completed to 3 h | pending | | |
-| lightweight-gan 1.3.0 (defaults, batch 10 x 4) | 43 img/s | being completed to 3 h | pending | | |
+| lightweight-gan 1.3.0 (defaults, batch 10 x 4) | 43–60 img/s | 0.60 M in 3 h 04 min | 94.55 | 93.3 | 1369 |
+| R3GAN (FFHQ-256 preset, batch 64, its bf16 CUDA kernels) | 3.7 img/s | 0.04 M in 3 h 01 min | 278.92 | 317.7 | 2439 |
 
-At half of their budget (a scripting error of mine stopped them there; they are being continued from those
-snapshots): R3GAN after 1 h 32 min FID-10k 308.5, lightweight-gan after 1 h 23 min FID-10k 137.4.
+nightgan reaches in 1 hour (FID-10k 47.9) a better FID than any of the baselines in 3 hours.
 
 On one 16 GB card the pixel-space GANs see 5x (StyleGAN2-ADA) to 40x (R3GAN) fewer images in the same time. R3GAN's
 FFHQ-256 configuration was trained on 8 GPUs with batch 256 in the paper; at 3.7 img/s it would need about 60 days on
@@ -58,6 +57,9 @@ Notes on the runs:
 - StyleGAN2-ADA was interrupted by a power cut after 2 h 38 min and resumed from its last snapshot (`--resume`) for
   25 minutes; the resume resets the Adam moments (the ADA probability was still 0). Disk-heavy cleanup during the
   resumed part slowed its data loading for a few minutes, so it got 2 extra minutes.
+- R3GAN died after 1 h 32 min with `CUDA error: unknown error` and lightweight-gan was paused after 1 h 23 min;
+  both were continued from their snapshots to 3 h. lightweight-gan ran at 43 img/s before the pause (right after the
+  GPU fault) and at 60 img/s after it; R3GAN's continuation restarts its Adam moments.
 - The exact commands and the patches the baselines needed for current PyTorch are in
   [tools/baselines.sh](../tools/baselines.sh).
 
