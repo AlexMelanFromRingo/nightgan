@@ -269,3 +269,12 @@ def test_not_enough_disk_space_is_reported_before_encoding(tmp_path, image_folde
     monkeypatch.setattr(data_module.shutil, 'disk_usage', lambda p: shutil._ntuple_diskusage(10 ** 9, 10 ** 9, 1000))
     with pytest.raises(DatasetError, match='disk space'):
         prepare_fast(image_folder, tmp_path / 'data')
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='needs a GPU')
+def test_small_latent_sets_on_the_gpu(small_set):
+    # small sets are kept on the GPU; 'cuda' and 'cuda:0' are the same device (a CUDA tensor cannot be pinned)
+    ts = TrainSet(small_set, 'cuda', seed=0)
+    assert ts.latents.device.type == 'cuda'
+    b = ts.next(8)
+    assert b.latents.device.type == 'cuda' and b.images224.device.type == 'cuda'

@@ -336,6 +336,8 @@ class TrainSet:
         self.path = Path(path)
         self.meta = meta = load_meta(self.path)
         self.device = torch.device(device)
+        if self.device.type == 'cuda' and self.device.index is None:  # 'cuda' and 'cuda:0' must compare equal
+            self.device = torch.device('cuda', torch.cuda.current_device())
         self.count = n = meta['count']
         lat = np.load(self.path / 'latents.npy', mmap_mode='r')[:n]
         self.latents = torch.from_numpy(np.array(lat))  # read into memory
@@ -413,7 +415,7 @@ class TrainSet:
     def _to_device(self, t: torch.Tensor) -> torch.Tensor:
         if t.device == self.device:
             return t
-        if self.device.type == 'cuda':
+        if t.device.type == 'cpu' and self.device.type == 'cuda':  # only host memory can be pinned
             return t.pin_memory().to(self.device, non_blocking=True)
         return t.to(self.device)
 
