@@ -1,6 +1,6 @@
 # Results
 
-Work in progress: the runs are paused, the table is updated as they finish. Nothing here is extrapolated: a number is
+Work in progress: the table is updated as the runs finish. Nothing here is extrapolated: a number is
 either measured or marked *pending*.
 
 All numbers: RTX 4080 SUPER (16 GB), WSL2, PyTorch 2.14 + CUDA 13.0. FID / KID are computed by `nightgan eval` /
@@ -9,35 +9,49 @@ of all 70 000 dataset images, EMA generator, no truncation). FID-10k is higher t
 
 ## FFHQ 256 x 256, preset S
 
-`nightgan train data/ffhq256 runs/ffhq --preset S --time 3h` — 29M-parameter generator, 37M discriminator, batch 256,
-143 img/s (median after warm-up), 7.2 GB of GPU memory.
+`nightgan train data/ffhq256 runs/ffhq --preset S --time 10h` — 29M-parameter generator, 37M discriminator, batch 256,
+143 img/s (median after warm-up), 7.2 GB of GPU memory. The run went to 3 h, was evaluated, then continued to 10 h
+(the continuation restarts the learning-rate schedule for a 10 h run).
 
 | Training time | Images seen | FID-10k | KID-10k (x1e-3) |
 |---|---|---|---|
 | 1.15 h | 0.50 M | 47.88 | 29.28 |
 | 2.18 h | 1.00 M | 27.85 | 13.32 |
 | 3.00 h | 1.42 M | 22.54 | 10.43 |
+| 4.75 h | 2.00 M | 16.25 | 6.26 |
+| 7.00 h | 3.00 M | 14.09 | 5.93 |
+| 9.05 h | 4.00 M | 12.03 | 4.98 |
+| **10.00 h** | **4.49 M** | **11.18** | **4.63** |
 
-The evaluation at 500 kimg was repeated after a restart from a snapshot: 47.97 and 47.88.
+`nightgan eval` of the final model (other seeds than the in-training evaluation): FID-10k 11.20, KID 4.63e-3,
+FD-DINOv2 298.6. The repeated evaluations of the same model differ by up to ~0.5 FID (sampling of the 10k images).
 
-Samples after 3 hours (seeds of the training grid, no truncation, no cherry-picking):
+After 10 hours (training grid seeds, no truncation, no cherry-picking):
+
+![FFHQ, preset S, 10 hours](assets/ffhq-S-10h.jpg)
+
+After 3 hours:
 
 ![FFHQ, preset S, 3 hours](assets/ffhq-S-3h.jpg)
 
 ## Equal-time comparison (3 h each, same GPU, same data)
 
-Speed is training throughput after warm-up; quality is measured on the last snapshot before the time budget ends.
+Speed is training throughput after warm-up; quality is the last snapshot before the budget ends, all evaluated by
+`nightgan eval` on 10k images (the same reference statistics, Inception and DINOv2 networks).
 
-| Model | Throughput | Images in the budget | FID-10k | FD-DINOv2 |
-|---|---|---|---|---|
-| **nightgan S** | 143 img/s | 1.42 M in 3 h | **22.54** | pending |
-| StyleGAN2-ADA (`--cfg=stylegan2`, batch 32, gamma 1, CUDA kernels) | 26 img/s | 0.27 M in 3 h 03 min | pending | pending |
-| R3GAN (FFHQ-256 preset, batch 64, its bf16 CUDA kernels) | 3.7 img/s | 0.02 M in 1 h 46 min, then a GPU fault; to be continued | pending | pending |
-| lightweight-gan 1.3.0 (defaults, batch 10 x 4) | 43 img/s | 0.22 M in 1 h 23 min, paused; to be continued | pending | pending |
+| Model | Throughput | Images in the budget | FID-10k | KID-10k (x1e-3) | FD-DINOv2 |
+|---|---|---|---|---|---|
+| **nightgan S** | 143 img/s | 1.42 M in 3 h | **22.98** | **10.8** | **574** |
+| StyleGAN2-ADA (`--cfg=stylegan2`, batch 32, gamma 1, CUDA kernels) | 26 img/s | 0.27 M in 3 h 03 min | 61.30 | 43.7 | 1356 |
+| R3GAN (FFHQ-256 preset, batch 64, its bf16 CUDA kernels) | 3.7 img/s | being completed to 3 h | pending | | |
+| lightweight-gan 1.3.0 (defaults, batch 10 x 4) | 43 img/s | being completed to 3 h | pending | | |
 
-What is already clear from the throughput alone: on one 16 GB card the pixel-space GANs see 5x (StyleGAN2-ADA) to
-40x (R3GAN) fewer images in the same time. R3GAN's FFHQ-256 configuration was trained on 8 GPUs with batch 256 in the
-paper; at 3.7 img/s it would need about 60 days on this card to see the 20 M images of its schedule.
+At half of their budget (a scripting error of mine stopped them there; they are being continued from those
+snapshots): R3GAN after 1 h 32 min FID-10k 308.5, lightweight-gan after 1 h 23 min FID-10k 137.4.
+
+On one 16 GB card the pixel-space GANs see 5x (StyleGAN2-ADA) to 40x (R3GAN) fewer images in the same time. R3GAN's
+FFHQ-256 configuration was trained on 8 GPUs with batch 256 in the paper; at 3.7 img/s it would need about 60 days on
+this card to see the 20 M images of its schedule.
 
 Notes on the runs:
 
@@ -47,13 +61,22 @@ Notes on the runs:
 - The exact commands and the patches the baselines needed for current PyTorch are in
   [tools/baselines.sh](../tools/baselines.sh).
 
+## Ablations (FFHQ 256, preset S, FID-10k at 500 kimg)
+
+Each run follows the schedule of the main run and is evaluated at 500 kimg (main run: 47.88 / 47.97).
+
+| Variant | FID-10k at 500 kimg |
+|---|---|
+| default (AdamW, beta1 0) | 47.88 |
+| AdaBelief, beta1 0.5 | 58.31 |
+| no REPA / no stage consistency / no DiffAugment / second seed | running |
+
 ## Planned
 
 - Finish R3GAN and lightweight-gan to 3 h, then FID-10k / KID / FD-DINOv2 of all models with the same code, and
   FID-vs-time curves (StyleGAN2 snapshots at 1 h, 2 h, 3 h).
-- FFHQ nightgan continued to 10 h, FID-50k at the end.
-- Ablations at 500 kimg against the main run (47.88): AdaBelief (beta1 0.5), no REPA, no stage consistency, no
-  DiffAugment, and a second seed of the baseline configuration to see the run-to-run spread.
+- FID-50k of the final models.
+- The remaining ablations, and a second seed to see the run-to-run spread.
 - AFHQ-v2 with its 3 classes (2 h) and the 833-image Pokemon set (1.5 h).
 
 ## Found along the way

@@ -13,10 +13,10 @@ research of 2024&ndash;2026. Pure PyTorch, `pip install`, three commands.
 ![CUDA kernels](https://img.shields.io/badge/custom%20CUDA%20kernels-none-76B900?logo=nvidia&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-<img src="docs/assets/ffhq-S-3h.jpg" width="100%" alt="FFHQ 256x256 samples after 3 hours of training">
+<img src="docs/assets/ffhq-S-10h.jpg" width="100%" alt="FFHQ 256x256 samples after 10 hours of training">
 
-<sub>FFHQ 256&times;256 after <b>3 hours</b> on one RTX 4080 SUPER &mdash; preset S, FID-10k 22.5, no truncation, no
-cherry-picking.</sub>
+<sub>FFHQ 256&times;256 after <b>one night (10 hours)</b> on one RTX 4080 SUPER &mdash; preset S, FID-10k 11.2, no
+truncation, no cherry-picking. After 3 hours: FID-10k 23.0, StyleGAN2-ADA on the same card and time: 61.3.</sub>
 
 [Quick start](#-quick-start) &bull; [How it works](#-how-it-works) &bull; [Results](docs/results.md) &bull;
 [Options](#%EF%B8%8F-training-options) &bull; [Python API](#-python-api) &bull; [Troubleshooting](#-troubleshooting)
