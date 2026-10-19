@@ -1,7 +1,6 @@
 # Results
 
-Work in progress: the table is updated as the runs finish. Nothing here is extrapolated: a number is
-either measured or marked *pending*.
+Every number here is measured, none is extrapolated.
 
 All numbers: RTX 4080 SUPER (16 GB), WSL2, PyTorch 2.14 + CUDA 13.0. FID / KID are computed by `nightgan eval` /
 the in-training evaluation (InceptionV3 of the original TensorFlow FID, 10 000 generated images against the statistics
