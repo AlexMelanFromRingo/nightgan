@@ -145,12 +145,14 @@ def _atomic_write_text(path: Path, text: str):
 def prepare(src, dst, resolution: int = 256, labels: str = 'none', autoencoder: str = SD_VAE, flip: bool = True,
             repa_images: bool = True, stats: bool = True, max_images: int | None = None, batch: int = 32,
             workers: int = 8, device=None, extractors: dict | None = None, ae=None, overwrite: bool = False,
-            progress: bool = True) -> dict:
+            progress: bool = True, recon_num: int = 10000) -> dict:
     """Encodes the images under `src` into the dataset folder `dst`.
 
     `extractors` maps a statistics name ('inception', 'dinov2') to a function of uint8 images `[B, 3, H, W]`
     returning features `[B, D]`; by default the metric networks are loaded. `meta.json` is written last: a folder
-    without it is an interrupted preparation."""
+    without it is an interrupted preparation. Then, with reference statistics and a real autoencoder, `recon_num`
+    images are decoded from their latents: FID / KID of that reconstruction (the ceiling of a GAN in this latent space)
+    are added to `meta.json` as `reconstruction`."""
     t0 = time.time()
     dst = Path(dst)
     meta_path = dst / 'meta.json'
@@ -255,7 +257,15 @@ def prepare(src, dst, resolution: int = 256, labels: str = 'none', autoencoder: 
                 repa_images=repa_images, stats=sorted(extractors), source=str(Path(src).resolve()),
                 skipped=len(skipped))
     _atomic_write_text(meta_path, json.dumps(meta, indent=2))
-    return dict(count=n, skipped=skipped, classes=classes, meta=meta, seconds=time.time() - t0)
+    reconstruction = None
+    if recon_num and 'inception' in extractors and ae.name != 'pixel':
+        from .metrics import reconstruction_quality
+        reconstruction = reconstruction_quality(dst, recon_num, ae=ae, extractors=extractors, device=device,
+                                                batch=batch, progress=progress)
+        meta['reconstruction'] = reconstruction
+        _atomic_write_text(meta_path, json.dumps(meta, indent=2))
+    return dict(count=n, skipped=skipped, classes=classes, meta=meta, seconds=time.time() - t0,
+                reconstruction=reconstruction)
 
 
 def load_meta(path) -> dict:

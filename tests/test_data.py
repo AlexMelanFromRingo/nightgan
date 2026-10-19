@@ -5,7 +5,7 @@ import pytest
 import torch
 from PIL import Image
 
-from conftest import mean_color, write_images
+from conftest import GrayAE, mean_color, write_images
 from nightgan.autoencoder import PixelAE
 from nightgan.data import DatasetError, TrainSet, load_meta, load_square, prepare, scan_images
 
@@ -124,6 +124,20 @@ def test_prepared_arrays(tmp_path, image_folder):
     assert stats['mu'].shape == (3,) and stats['sigma'].shape == (3, 3) and stats['features'].shape == (24, 3)
     assert len(meta['latent_mean']) == 3 and all(s > 0 for s in meta['latent_std'])
     assert meta['latent'] == {'channels': 3, 'resolution': 32, 'factor': 1}
+
+
+def test_prepare_measures_the_reconstruction_ceiling_of_the_autoencoder(tmp_path, image_folder):
+    summary = prepare_fast(image_folder, tmp_path / 'data', ae=GrayAE(), recon_num=24)
+    recon = load_meta(tmp_path / 'data')['reconstruction']
+    assert recon['num'] == 24 and recon['fid'] > 0.01
+    assert summary['reconstruction'] == recon
+
+
+def test_no_reconstruction_without_reference_statistics_or_an_autoencoder(tmp_path, image_folder):
+    prepare_fast(image_folder, tmp_path / 'nostats', ae=GrayAE(), recon_num=24, stats=False)
+    prepare_fast(image_folder, tmp_path / 'pixel', recon_num=24)
+    assert 'reconstruction' not in load_meta(tmp_path / 'nostats')
+    assert 'reconstruction' not in load_meta(tmp_path / 'pixel')
 
 
 def test_existing_dataset_is_not_overwritten(tmp_path, image_folder):

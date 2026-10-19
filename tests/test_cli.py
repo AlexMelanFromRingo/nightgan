@@ -92,6 +92,13 @@ def test_eval_a_model_and_a_folder_of_images(trained, tmp_path, capsys):
     assert 'fid' in capsys.readouterr().out
 
 
+def test_eval_of_the_reconstruction_of_a_dataset(trained, capsys):
+    assert main(['eval', str(trained / 'data'), '--reconstruction', '--num', '24', '--metrics', 'fid',
+                 '--device', 'cpu']) == 0
+    lines = dict(line.split(': ') for line in capsys.readouterr().out.strip().splitlines())
+    assert lines['num'] == '24' and abs(float(lines['fid'])) < 1e-6   # the pixel "autoencoder" is lossless
+
+
 def test_training_again_resumes_and_a_changed_model_is_refused(trained, capsys):
     run = trained / 'run'
     assert main(['train', str(trained / 'data'), str(run), '--kimg', '0.048'] + TINY) == 0

@@ -16,6 +16,12 @@ channel with statistics of the dataset.
 
 `--autoencoder pixel` skips the VAE and trains on the pixels; it is meant for small images (32 - 64 px) and tests.
 
+The VAE sets a ceiling: a generator can at best reproduce the latents of the dataset, and decoding them loses some
+detail. `nightgan prepare` measures it (FID / KID of 10 000 dataset images decoded from sampled latents, stored as
+`reconstruction` in `meta.json`; `nightgan eval DATA --reconstruction` repeats it). On FFHQ 256 it is FID-10k 2.35,
+on the 833 Pokemon images FID-5k 8.34; the trained models are far above it (11.2 and 117.4), so there the GAN, not the
+VAE, limits the quality.
+
 ## Generator
 
 A transformer on a 16 x 16 grid of tokens (`patch = latent size / 16`), following GAT:

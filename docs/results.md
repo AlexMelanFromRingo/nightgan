@@ -34,7 +34,7 @@ FD-DINOv2 298.6. The repeated evaluations of the same model differ by up to ~0.5
 after 10 h (KID 4.73e-3), 21.35 after 3 h (KID 10.66e-3).
 
 The ceiling set by the frozen SD-VAE: 10 000 dataset images encoded and decoded (latents sampled as in training) score
-FID-10k 2.35, KID 0.53e-3, FD-DINOv2 30.3. The 10-hour model (FID-10k 11.2) is far from that ceiling, so training
+FID-10k 2.35, KID 0.53e-3, FD-DINOv2 30.3 (`nightgan prepare` now reports this for every dataset). The 10-hour model (FID-10k 11.2) is far from that ceiling, so training
 time and model size, not the autoencoder, limit the quality here.
 
 After 10 hours (training grid seeds, no truncation, no cherry-picking):
@@ -116,6 +116,9 @@ The samples have the colors, outlines and white backgrounds of the dataset and d
 coherent creatures:
 
 ![Pokemon, preset S, 1.5 hours](assets/pokemon-S-1.5h.jpg)
+
+The autoencoder ceiling of this dataset (5 000 images decoded from their latents, `nightgan eval --reconstruction`)
+is FID-5k 8.34, KID 0.05e-3: the SD-VAE reproduces these drawings well, the gap is the GAN's.
 
 On a dataset this small nightgan does not yet do what it does on FFHQ / AFHQ. For comparison, lightweight-gan
 (FastGAN, made for few-shot data) on the same 833 images for the same 1.5 h (defaults, batch 10 x 4, bf16, 62 img/s),

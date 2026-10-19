@@ -30,3 +30,23 @@ def image_folder(tmp_path):
     folder = tmp_path / 'images'
     write_images(folder, 24)
     return folder
+
+
+def left_right_color(images: torch.Tensor) -> torch.Tensor:
+    """Mean colors of the left and the right half: a stand-in feature extractor that sees mirroring."""
+    w = images.shape[-1] // 2
+    return torch.cat([mean_color(images[..., :w]), mean_color(images[..., w:])], dim=1)
+
+
+class GrayAE:
+    """A lossy stand-in autoencoder: one latent channel, the brightness, decoded back to gray RGB."""
+    name = 'gray'
+    channels = 1
+    factor = 1
+
+    def encode_moments(self, images: torch.Tensor) -> torch.Tensor:
+        gray = images.float().mean(dim=1, keepdim=True) / 127.5 - 1
+        return torch.cat([gray, torch.full_like(gray, -30.0)], dim=1)
+
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        return z.float().expand(-1, 3, -1, -1)

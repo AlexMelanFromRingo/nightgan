@@ -118,3 +118,31 @@ def evaluate(image_batches: Iterable[torch.Tensor], data_dir, metrics=('fid', 'k
         else:
             result['kid'], result['kid_std'] = kid(feats[name], ref['features'])
     return result
+
+
+def reconstruction_quality(data_dir, num: int = 10000, metrics=('fid', 'kid'), ae=None, extractors: dict | None = None,
+                           device=None, batch: int = 32, seed: int = 0, progress: bool = False) -> dict:
+    """`metrics` of the dataset's own images after the autoencoder round trip (their stored latents, sampled as in
+    training, decoded): the best score a GAN in this latent space can reach in the same evaluation. `num` images are
+    drawn at random, with repetition when the dataset is smaller."""
+    from tqdm import tqdm
+
+    from .autoencoder import load_autoencoder, sample_latent, to_uint8
+    from .data import load_meta
+    data_dir = Path(data_dir)
+    meta = load_meta(data_dir)
+    device = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
+    ae = ae or load_autoencoder(meta['autoencoder'], device)
+    latents = np.load(data_dir / 'latents.npy', mmap_mode='r')
+    count = meta['count']
+    idx = np.sort(np.random.default_rng(seed).choice(count, num, replace=num > count))
+    g = torch.Generator(device).manual_seed(seed)
+
+    def batches():
+        with tqdm(total=num, desc='reconstruction', unit='img', disable=not progress) as bar:
+            for i in range(0, num, batch):
+                moments = torch.from_numpy(np.ascontiguousarray(latents[idx[i:i + batch], 0])).to(device)
+                yield to_uint8(ae.decode(sample_latent(moments, g))).cpu()
+                bar.update(min(batch, num - i))
+
+    return evaluate(batches(), data_dir, metrics=metrics, extractors=extractors, device=device)

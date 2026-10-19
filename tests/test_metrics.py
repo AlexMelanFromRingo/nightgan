@@ -3,9 +3,9 @@ import pytest
 import scipy.linalg
 import torch
 
-from conftest import mean_color, write_images
+from conftest import GrayAE, left_right_color, mean_color, write_images
 from nightgan.data import load_square, prepare
-from nightgan.metrics import MetricError, evaluate, feature_stats, frechet_distance, kid
+from nightgan.metrics import MetricError, evaluate, feature_stats, frechet_distance, kid, reconstruction_quality
 
 
 def random_spd(d, rng):
@@ -65,6 +65,34 @@ def test_missing_reference_statistics_are_reported(tmp_path):
                  extractors={'dinov2': mean_color})
     with pytest.raises(ValueError, match='unknown metric'):
         evaluate([], tmp_path / 'data', metrics=('psnr',), extractors={})
+
+
+def test_a_lossless_autoencoder_reconstructs_the_dataset_exactly(tmp_path):
+    write_images(tmp_path / 'src', 24, seed=5)
+    prepare(tmp_path / 'src', tmp_path / 'data', resolution=32, autoencoder='pixel', device='cpu', batch=8,
+            workers=2, extractors={'inception': left_right_color}, progress=False)
+    result = reconstruction_quality(tmp_path / 'data', num=24, metrics=('fid',),
+                                    extractors={'inception': left_right_color}, device='cpu')
+    assert result['num'] == 24
+    assert result['fid'] == pytest.approx(0.0, abs=1e-6)   # the stored originals, not their mirror images
+
+
+def test_a_lossy_autoencoder_falls_short_of_the_dataset(tmp_path):
+    write_images(tmp_path / 'src', 24, seed=5)
+    prepare(tmp_path / 'src', tmp_path / 'data', resolution=32, device='cpu', batch=8, workers=2, ae=GrayAE(),
+            extractors={'inception': mean_color}, progress=False)
+    result = reconstruction_quality(tmp_path / 'data', num=24, metrics=('fid', 'kid'), ae=GrayAE(),
+                                    extractors={'inception': mean_color}, device='cpu')
+    assert result['fid'] > 0.01 and np.isfinite(result['kid'])   # KID: unbiased, noisy on 24 images
+
+
+def test_a_dataset_smaller_than_the_sample_is_drawn_with_repetition(tmp_path):
+    write_images(tmp_path / 'src', 8)
+    prepare(tmp_path / 'src', tmp_path / 'data', resolution=32, autoencoder='pixel', device='cpu', batch=8,
+            workers=1, extractors={'inception': mean_color}, progress=False)
+    result = reconstruction_quality(tmp_path / 'data', num=50, metrics=('fid',), extractors={'inception': mean_color},
+                                    device='cpu')
+    assert result['num'] == 50
 
 
 @pytest.mark.slow

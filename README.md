@@ -145,6 +145,13 @@ transparent images on white, converts palette / grayscale / CMYK / 16-bit images
 files and `__MACOSX` (listed at the end), checks the free disk space first, and encodes each image together with its
 mirror image. About 180 KB per image plus up to ~170 MB of FID / FD-DINOv2 reference statistics.
 
+At the end it measures the **autoencoder ceiling**: 10 000 dataset images decoded from their latents, scored like a
+model (`autoencoder ceiling: FID 2.35, KID 0.53e-3 ...` on FFHQ). No model trained on these latents can do better in
+an evaluation of as many images; if the number is high for your images (fine text, line art, unusual domains), try
+another `--autoencoder` or `--autoencoder pixel` for small images. `--recon-num 0` skips it (it takes a few minutes at 256 px);
+`nightgan eval data/mine --reconstruction [--num 5000]` measures it again, e.g. with as many images as your
+evaluations.
+
 Small datasets (a few hundred to a few thousand images) work thanks to augmentation and REPA; 10k+ images give the
 best results. Hugging Face parquet datasets: `python tools/parquet_to_images.py <parquet dir> <folder> [--label-column label]`.
 </details>

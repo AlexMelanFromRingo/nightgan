@@ -60,8 +60,12 @@ def cmd_prepare(args):
     summary = prepare(args.src, args.dst, resolution=args.resolution, labels=args.labels, autoencoder=args.autoencoder,
                       flip=not args.no_flip, repa_images=not args.no_repa_images, stats=not args.no_stats,
                       max_images=args.max_images, batch=args.batch, workers=args.workers, device=args.device,
-                      overwrite=args.overwrite)
+                      overwrite=args.overwrite, recon_num=args.recon_num)
     print(f'{summary["count"]} images prepared in {args.dst} ({summary["seconds"]:.0f} s)')
+    recon = summary['reconstruction']
+    if recon:
+        print(f'autoencoder ceiling: FID {recon["fid"]:.2f}, KID {recon["kid"] * 1e3:.2f}e-3 of {recon["num"]} images '
+              f'decoded from their latents (the best a model can score in an evaluation of as many images)')
     if summary['classes']:
         print(f'{len(summary["classes"])} classes: {", ".join(summary["classes"])}')
     if summary['skipped']:
@@ -173,7 +177,16 @@ def cmd_interpolate(args):
 def cmd_eval(args):
     import numpy as np
     from .data import load_meta, load_square, scan_images
-    from .metrics import evaluate
+    from .metrics import evaluate, reconstruction_quality
+    metrics = tuple(m.strip() for m in args.metrics.split(',') if m.strip())
+    if args.reconstruction:
+        if len(args.targets) != 1 or args.images:
+            raise ValueError('with --reconstruction give only the dataset folder')
+        result = reconstruction_quality(args.targets[0], args.num or 10000, metrics=metrics, device=args.device,
+                                        batch=args.batch, seed=args.seed, progress=True)
+        for k, v in result.items():
+            print(f'{k}: {v:.6g}' if isinstance(v, float) else f'{k}: {v}')
+        return
     if args.images:
         if len(args.targets) != 1:
             raise ValueError('with --images give only the dataset folder')
@@ -213,7 +226,6 @@ def cmd_eval(args):
                 z = torch.randn(n, pipe.cfg.z_dim, generator=g)
                 y = labels[torch.randint(0, len(labels), (n,), generator=g)] if labels is not None else None
                 yield pipe.images(z, y, args.truncation, args.batch)
-    metrics = tuple(m.strip() for m in args.metrics.split(',') if m.strip())
     result = evaluate(batches(), data, metrics=metrics, device=args.device)
     for k, v in result.items():
         print(f'{k}: {v:.6g}' if isinstance(v, float) else f'{k}: {v}')
@@ -239,6 +251,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument('--no-flip', action='store_true', help='do not add mirrored copies')
     s.add_argument('--no-repa-images', action='store_true', help='do not store the 224px images REPA needs')
     s.add_argument('--no-stats', action='store_true', help='skip the FID / FD-DINOv2 reference statistics')
+    s.add_argument('--recon-num', type=int, default=10000,
+                   help='images decoded from their latents to measure the autoencoder ceiling (FID / KID of its '
+                        'reconstruction, default 10000), 0 skips it')
     s.add_argument('--max-images', type=int, help='use only the first N images')
     s.add_argument('--batch', type=int, default=32, help='images per encoding batch')
     s.add_argument('--workers', type=int, default=8, help='image decoding threads')
@@ -309,10 +324,13 @@ def build_parser() -> argparse.ArgumentParser:
     q.set_defaults(func=cmd_interpolate)
 
     q = sub.add_parser('eval', help='FID / KID / FD-DINOv2 of a model or of a folder of images')
-    q.add_argument('targets', nargs='+', help='MODEL DATA, or DATA with --images')
+    q.add_argument('targets', nargs='+', help='MODEL DATA, or DATA with --images / --reconstruction')
     q.add_argument('--images', help='evaluate the images in this folder instead of a model')
+    q.add_argument('--reconstruction', action='store_true',
+                   help="evaluate the dataset's own images decoded from their latents: the autoencoder ceiling")
     q.add_argument('--metrics', default='fid,kid', help='comma separated: fid, kid, fd_dinov2')
-    q.add_argument('--num', type=int, help='number of images (default 50000 generated / all in the folder)')
+    q.add_argument('--num', type=int, help='number of images (default 50000 generated / all in the folder / 10000 '
+                                            'reconstructed)')
     q.add_argument('--seed', type=int, default=0)
     model_args(q)
     q.set_defaults(func=cmd_eval)
