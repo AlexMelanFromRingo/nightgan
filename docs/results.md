@@ -43,7 +43,7 @@ Speed is training throughput after warm-up; quality is the last snapshot before 
 |---|---|---|---|---|---|
 | **nightgan S** | 143 img/s | 1.42 M in 3 h | **22.98** | **10.8** | **574** |
 | StyleGAN2-ADA (`--cfg=stylegan2`, batch 32, gamma 1, CUDA kernels) | 26 img/s | 0.27 M in 3 h 03 min | 61.30 | 43.7 | 1356 |
-| lightweight-gan 1.3.0 (defaults, batch 10 x 4) | 43–60 img/s | 0.60 M in 3 h 04 min | 94.55 | 93.3 | 1369 |
+| lightweight-gan 1.3.0 (defaults, batch 10 x 4) | 43–60 img/s | 0.60 M in 3 h 04 min | 82.49 | 75.8 | 1338 |
 | R3GAN (FFHQ-256 preset, batch 64, its bf16 CUDA kernels) | 3.7 img/s | 0.04 M in 3 h 01 min | 278.92 | 317.7 | 2439 |
 
 nightgan reaches in 1 hour (FID-10k 47.9) a better FID than any of the baselines in 3 hours.
@@ -60,6 +60,9 @@ Notes on the runs:
 - R3GAN died after 1 h 32 min with `CUDA error: unknown error` and lightweight-gan was paused after 1 h 23 min;
   both were continued from their snapshots to 3 h. lightweight-gan ran at 43 img/s before the pause (right after the
   GPU fault) and at 60 img/s after it; R3GAN's continuation restarts its Adam moments.
+- lightweight-gan writes its samples as JPEG (quality 75); scored that way it gets FID 94.55, KID 93.3e-3,
+  FD-DINOv2 1369. The table uses lossless PNG samples of the same model ([tools/lwgan_png.py](../tools/lwgan_png.py)),
+  like the other models.
 - The exact commands and the patches the baselines needed for current PyTorch are in
   [tools/baselines.sh](../tools/baselines.sh).
 
@@ -94,8 +97,20 @@ coherent creatures:
 
 ![Pokemon, preset S, 1.5 hours](assets/pokemon-S-1.5h.jpg)
 
-On a dataset this small nightgan does not yet do what it does on FFHQ / AFHQ. A run of lightweight-gan (FastGAN, made
-for few-shot data) on the same images and time is queued for comparison.
+On a dataset this small nightgan does not yet do what it does on FFHQ / AFHQ. For comparison, lightweight-gan
+(FastGAN, made for few-shot data) on the same 833 images for the same 1.5 h (defaults, batch 10 x 4, bf16, 62 img/s),
+scored the same way (5 000 PNG samples of its EMA generator):
+
+| Model, 1.5 h | Images seen | FID-5k | KID (x1e-3) |
+|---|---|---|---|
+| **nightgan S** | 0.58 M | **117.4** | **94.0** |
+| lightweight-gan 1.3.0 | 0.36 M | 135.6 | 109.3 |
+
+lightweight-gan is not more coherent here either (first 16 of the scored samples):
+
+![Pokemon, lightweight-gan, 1.5 hours](assets/pokemon-lwgan-1.5h.jpg)
+
+Both need more than 1.5 h for 833 images; few-shot data remains the weakest case for nightgan.
 
 ## Ablations (FFHQ 256, preset S, FID-10k at 500 kimg)
 
@@ -120,11 +135,9 @@ The two seeds of the default configuration differ by 11 FID at this point, so on
 
 ## Planned
 
-- Finish R3GAN and lightweight-gan to 3 h, then FID-10k / KID / FD-DINOv2 of all models with the same code, and
-  FID-vs-time curves (StyleGAN2 snapshots at 1 h, 2 h, 3 h).
+- FID-vs-time curves of the baselines (StyleGAN2-ADA snapshots at 1 h, 2 h, 3 h).
 - FID-50k of the final models.
 - More seeds per ablation (the spread between seeds is ~11 FID at 1 h).
-- lightweight-gan on the Pokemon set (1.5 h), for comparison.
 
 ## Found along the way
 
@@ -137,6 +150,8 @@ The two seeds of the default configuration differ by 11 FID at this point, so on
   while another CUDA process ran on the same GPU. Windows logged no hardware (WHEA) or driver (Xid, TDR) error at
   those times. nightgan now restarts itself from the last snapshot (every 15 minutes); the baselines were continued
   from their snapshots.
+- **Lossy samples bias FID.** lightweight-gan saves generated images as JPEG (quality 75): the same model scores
+  FID-10k 94.55 from its JPEG files and 82.49 from PNG files. Compare models only on lossless samples.
 - **Stale pip CUDA toolkit links.** The StyleGAN3 / R3GAN kernel loader cached a `CUDA_HOME` of symlinks into a Python
   environment; after that environment was deleted, every kernel build failed. Fixed in the
   [modernized StyleGAN3 fork](https://github.com/AlexMelanFromRingo/stylegan3) (one `CUDA_HOME` per environment).

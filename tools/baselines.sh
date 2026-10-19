@@ -13,7 +13,8 @@
 #                dnnlib/util.py taken from the fork (current PyTorch / Python), its own bf16 kernels kept, and
 #                float Adam betas in train.py / training/training_loop.py (PyTorch rejects betas=[0, 0])
 #   LWGAN        the lightweight_gan command of an environment with lightweight-gan 1.3.0
-#                (github.com/AlexMelanFromRingo/lightweight-gan-cpu)
+#                (github.com/AlexMelanFromRingo/lightweight-gan-cpu); its samples are written as PNG by
+#                tools/lwgan_png.py (lightweight-gan itself writes JPEG, which raises FID)
 #   SG3_PY       a Python environment with the fork's requirements.txt
 set -euo pipefail
 BUDGET=${BUDGET:-3h}
@@ -25,6 +26,8 @@ SG3=${SG3:-$HOME/Python/stylegan3}
 R3GAN=${R3GAN:-$HOME/Python/baselines/R3GAN}
 SG3_PY=${SG3_PY:?python of the StyleGAN3 environment}
 LWGAN=${LWGAN:?lightweight_gan command}
+LWGAN_PY=${LWGAN_PY:-$(dirname "$LWGAN")/python}
+TOOLS=$(cd "$(dirname "$0")" && pwd)
 NUM=${NUM:-10000}
 mkdir -p "$OUT"
 if ! timeout "$BUDGET" true 2>/dev/null; then  # e.g. "1h36m" is not a valid duration for timeout(1): use "96m"
@@ -73,13 +76,15 @@ eval-all)   # NUM images of the last snapshot of each, scored like nightgan
     r3=$(ls -t "$OUT"/r3gan/*/network-snapshot-*.pkl | head -1)
     (cd "$R3GAN" && "$SG3_PY" gen_images.py --network="$r3" --seeds=0-$((NUM - 1)) --outdir="$OUT/eval/r3gan")
     for i in $(seq 0 $((NUM / 2000 - 1))); do
-        "$LWGAN" --name ffhq256 --models-dir "$OUT/lwgan/models" \
+        "$LWGAN_PY" "$TOOLS/lwgan_png.py" --name ffhq256 --models-dir "$OUT/lwgan/models" \
             --results-dir "$OUT/eval/lwgan-$i" --generate --num-image-tiles 2000 --generate-types "['ema']"
     done
     for d in stylegan2 r3gan; do
         nightgan eval "$FFHQ_DATA" --images "$OUT/eval/$d" --metrics fid,kid,fd_dinov2 | tee "$OUT/eval/$d.txt"
     done
-    mkdir -p "$OUT/eval/lwgan" && find "$OUT"/eval/lwgan-* -name '*-ema.*' -exec mv {} "$OUT/eval/lwgan/" \;
+    mkdir -p "$OUT/eval/lwgan" && n=0 && for f in "$OUT"/eval/lwgan-*/*/*-ema.png; do  # unique names across runs
+        mv "$f" "$OUT/eval/lwgan/$n.png"; n=$((n + 1))
+    done
     nightgan eval "$FFHQ_DATA" --images "$OUT/eval/lwgan" --metrics fid,kid,fd_dinov2 | tee "$OUT/eval/lwgan.txt" ;;
 *) echo "usage: $0 stylegan2|stylegan2-resume|r3gan|r3gan-resume|lightweight-gan|lightweight-gan-resume|eval-all"; exit 1 ;;
 esac

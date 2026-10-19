@@ -16,7 +16,7 @@ research of 2024&ndash;2026. Pure PyTorch, `pip install`, three commands.
 <img src="docs/assets/ffhq-S-10h.jpg" width="100%" alt="FFHQ 256x256 samples after 10 hours of training">
 
 <sub>FFHQ 256&times;256 after <b>one night (10 hours)</b> on one RTX 4080 SUPER &mdash; preset S, FID-10k 11.2, no
-truncation, no cherry-picking. At equal time (3 h, same card): nightgan 23.0, StyleGAN2-ADA 61.3, lightweight-gan 94.6,
+truncation, no cherry-picking. At equal time (3 h, same card): nightgan 23.0, StyleGAN2-ADA 61.3, lightweight-gan 82.5,
 R3GAN 278.9.</sub>
 
 [Quick start](#-quick-start) &bull; [How it works](#-how-it-works) &bull; [Results](docs/results.md) &bull;
