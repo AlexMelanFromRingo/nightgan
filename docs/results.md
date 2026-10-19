@@ -28,6 +28,10 @@ FD-DINOv2 298.6. The repeated evaluations of the same model differ by up to ~0.5
 **FID-50k** (the usual protocol: 50 000 generated images against all 70 000, `nightgan eval MODEL DATA`): **9.88**
 after 10 h (KID 4.73e-3), 21.35 after 3 h (KID 10.66e-3).
 
+The ceiling set by the frozen SD-VAE: 10 000 dataset images encoded and decoded (latents sampled as in training) score
+FID-10k 2.35, KID 0.53e-3, FD-DINOv2 30.3. The 10-hour model (FID-10k 11.2) is far from that ceiling, so training
+time and model size, not the autoencoder, limit the quality here.
+
 After 10 hours (training grid seeds, no truncation, no cherry-picking):
 
 ![FFHQ, preset S, 10 hours](assets/ffhq-S-10h.jpg)
