@@ -26,6 +26,9 @@ of all 70 000 dataset images, EMA generator, no truncation). FID-10k is higher t
 `nightgan eval` of the final model (other seeds than the in-training evaluation): FID-10k 11.20, KID 4.63e-3,
 FD-DINOv2 298.6. The repeated evaluations of the same model differ by up to ~0.5 FID (sampling of the 10k images).
 
+**FID-50k** (the usual protocol: 50 000 generated images against all 70 000, `nightgan eval MODEL DATA`): **9.88**
+after 10 h (KID 4.73e-3), 21.35 after 3 h (KID 10.66e-3).
+
 After 10 hours (training grid seeds, no truncation, no cherry-picking):
 
 ![FFHQ, preset S, 10 hours](assets/ffhq-S-10h.jpg)
@@ -46,7 +49,16 @@ Speed is training throughput after warm-up; quality is the last snapshot before 
 | lightweight-gan 1.3.0 (defaults, batch 10 x 4) | 43–60 img/s | 0.60 M in 3 h 04 min | 82.49 | 75.8 | 1338 |
 | R3GAN (FFHQ-256 preset, batch 64, its bf16 CUDA kernels) | 3.7 img/s | 0.04 M in 3 h 01 min | 278.92 | 317.7 | 2439 |
 
-nightgan reaches in 1 hour (FID-10k 47.9) a better FID than any of the baselines in 3 hours.
+nightgan reaches in 1 hour (FID-10k 47.9) a better FID than any of the baselines in 3 hours. FID-10k over time for
+nightgan and StyleGAN2-ADA, the best baseline (its snapshots scored the same way):
+
+| | ~1 h | ~2 h | ~3 h |
+|---|---|---|---|
+| **nightgan S** | **47.88** (1.15 h) | **27.85** (2.18 h) | **22.98** (3.00 h) |
+| StyleGAN2-ADA | 167.57 (0.99 h) | 89.23 (2.02 h) | 61.30 (3.05 h) |
+
+StyleGAN2-ADA at 2.66 h: 74.97. nightgan at 1 h and 2 h: the evaluation during training (same code and reference,
+other seeds).
 
 On one 16 GB card the pixel-space GANs see 5x (StyleGAN2-ADA) to 40x (R3GAN) fewer images in the same time. R3GAN's
 FFHQ-256 configuration was trained on 8 GPUs with batch 256 in the paper; at 3.7 img/s it would need about 60 days on
@@ -135,9 +147,8 @@ The two seeds of the default configuration differ by 11 FID at this point, so on
 
 ## Planned
 
-- FID-vs-time curves of the baselines (StyleGAN2-ADA snapshots at 1 h, 2 h, 3 h).
-- FID-50k of the final models.
 - More seeds per ablation (the spread between seeds is ~11 FID at 1 h).
+- Longer runs on small datasets (Pokemon after 1.5 h is not yet coherent with either GAN).
 
 ## Found along the way
 
