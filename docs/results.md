@@ -9,8 +9,13 @@ of all 70 000 dataset images, EMA generator, no truncation). FID-10k is higher t
 ## FFHQ 256 x 256, preset S
 
 `nightgan train data/ffhq256 runs/ffhq --preset S --time 10h` — 29M-parameter generator, 37M discriminator, batch 256,
-143 img/s (median after warm-up), 7.2 GB of GPU memory. The run went to 3 h, was evaluated, then continued to 10 h
-(the continuation restarts the learning-rate schedule for a 10 h run).
+143 img/s (median after warm-up), 7.2 GB of GPU memory.
+
+This is not one uninterrupted 10 h schedule. The run was started with `--time 3h` (for the equal-time comparison),
+evaluated, then continued with `--time 10h`. The learning rate is a function of the fraction of the run's length
+(constant, then a cosine decay to 25 % over the last third), so it went: full until 2 h, down to 25 % at 3 h, **back to
+full at 3 h** (3 h of 10 h is in the constant part), full until 6.7 h, down to 25 % at 10 h. The optimizer state and the
+EMA carried over. A run with one continuous 10 h schedule has not been measured.
 
 | Training time | Images seen | FID-10k | KID-10k (x1e-3) |
 |---|---|---|---|
